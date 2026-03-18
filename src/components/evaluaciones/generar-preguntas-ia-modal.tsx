@@ -211,14 +211,16 @@ export function GenerarPreguntasIAModal({ open, onOpenChange, categorias, onSave
               <Input
                 value={categoria}
                 onChange={(e) => setCategoria(e.target.value)}
-                list="ia-cats"
-                placeholder="JavaScript, React, SQL..."
+                placeholder="Ej: JavaScript, Marketing, Medicina, Derecho..."
                 required
                 className="mt-1"
               />
-              <datalist id="ia-cats">
-                {categorias.map(c => <option key={c} value={c} />)}
-              </datalist>
+              <p className="text-xs text-muted-foreground mt-1">
+                Campo abierto. Escribe cualquier area de conocimiento, industria o tecnologia.
+                {categorias.length > 0 && (
+                  <span> Categorias existentes en tu banco: <strong>{categorias.join(', ')}</strong></span>
+                )}
+              </p>
             </div>
 
             {/* Subcategoria */}
@@ -227,9 +229,12 @@ export function GenerarPreguntasIAModal({ open, onOpenChange, categorias, onSave
               <Input
                 value={subcategoria}
                 onChange={(e) => setSubcategoria(e.target.value)}
-                placeholder="React Hooks, SQL JOINs..."
+                placeholder="Ej: React Hooks, SQL JOINs, Legislacion laboral..."
                 className="mt-1"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Opcional. Especifica un tema mas puntual dentro de la categoria para preguntas mas enfocadas.
+              </p>
             </div>
 
             {/* Tipos */}
