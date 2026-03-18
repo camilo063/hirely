@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { getVacante, updateVacante, deleteVacante } from '@/lib/services/vacantes.service';
 import { vacanteUpdateSchema } from '@/lib/validations/vacante.schema';
+import type { UpdateVacanteInput } from '@/lib/types/vacante.types';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
 export async function GET(
@@ -28,7 +29,7 @@ export async function PUT(
     const orgId = await getOrgId();
     const { id } = await params;
     const body = await request.json();
-    const validated = vacanteUpdateSchema.parse(body);
+    const validated = vacanteUpdateSchema.parse(body) as unknown as UpdateVacanteInput;
     const vacante = await updateVacante(orgId, id, validated);
     return apiResponse(vacante);
   } catch (error) {
