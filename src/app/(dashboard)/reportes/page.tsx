@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Briefcase, Users, UserCheck, TrendingUp, BarChart2 } from 'lucide-react';
+import { Briefcase, Users, UserCheck, TrendingUp, BarChart2, ShieldCheck } from 'lucide-react';
 import { useReportes } from '@/hooks/useReportes';
 import { KPICard } from '@/components/reportes/kpi-card';
 import { FunnelChart } from '@/components/reportes/funnel-chart';
@@ -11,6 +11,8 @@ import { VolumeChart } from '@/components/reportes/volume-chart';
 import { TopVacantesTable } from '@/components/reportes/top-vacantes-table';
 import { ScoresChart } from '@/components/reportes/scores-chart';
 import { FiltrosPanel } from '@/components/reportes/filtros-panel';
+import { IntegridadEvaluaciones } from '@/components/reportes/integridad-evaluaciones';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -122,72 +124,91 @@ export default function ReportesPage() {
         </div>
       </div>
 
-      {/* Filtros */}
-      <FiltrosPanel filtros={filtros} onChange={setFiltros} vacantes={vacantes} />
+      <Tabs defaultValue="pipeline" className="space-y-6">
+        <TabsList className="bg-soft-gray">
+          <TabsTrigger value="pipeline" className="gap-1.5">
+            <BarChart2 className="h-4 w-4" />
+            Pipeline
+          </TabsTrigger>
+          <TabsTrigger value="integridad" className="gap-1.5">
+            <ShieldCheck className="h-4 w-4" />
+            Integridad
+          </TabsTrigger>
+        </TabsList>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard
-          titulo="Vacantes Activas"
-          valor={kpis?.vacantesActivas || 0}
-          icono={<Briefcase className="h-5 w-5" />}
-        />
-        <KPICard
-          titulo="Total Candidatos"
-          valor={kpis?.totalCandidatos || 0}
-          icono={<Users className="h-5 w-5" />}
-        />
-        <KPICard
-          titulo="Contratados (90d)"
-          valor={kpis?.contratados90d || 0}
-          icono={<UserCheck className="h-5 w-5" />}
-          color="success"
-        />
-        <KPICard
-          titulo="Tasa de Conversion"
-          valor={`${kpis?.tasaConversionGlobal || 0}%`}
-          subtitulo="Ultimos 90 dias"
-          icono={<TrendingUp className="h-5 w-5" />}
-          color={conversionColor}
-        />
-      </div>
+        <TabsContent value="pipeline" className="space-y-6">
+          {/* Filtros */}
+          <FiltrosPanel filtros={filtros} onChange={setFiltros} vacantes={vacantes} />
 
-      {/* Funnel + Tiempos */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-base font-semibold text-navy mb-4">
-            Funnel de Conversion
-            {funnel?.porVacante && (
-              <span className="text-sm font-normal text-muted-foreground ml-2">
-                — {funnel.porVacante.vacanteTitulo}
-              </span>
-            )}
-          </h2>
-          {funnel && <FunnelChart data={funnel} />}
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-base font-semibold text-navy mb-4">Dias promedio por etapa</h2>
-          {tiempos && <TimeMetrics tiempos={tiempos} />}
-        </div>
-      </div>
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <KPICard
+              titulo="Vacantes Activas"
+              valor={kpis?.vacantesActivas || 0}
+              icono={<Briefcase className="h-5 w-5" />}
+            />
+            <KPICard
+              titulo="Total Candidatos"
+              valor={kpis?.totalCandidatos || 0}
+              icono={<Users className="h-5 w-5" />}
+            />
+            <KPICard
+              titulo="Contratados (90d)"
+              valor={kpis?.contratados90d || 0}
+              icono={<UserCheck className="h-5 w-5" />}
+              color="success"
+            />
+            <KPICard
+              titulo="Tasa de Conversion"
+              valor={`${kpis?.tasaConversionGlobal || 0}%`}
+              subtitulo="Ultimos 90 dias"
+              icono={<TrendingUp className="h-5 w-5" />}
+              color={conversionColor}
+            />
+          </div>
 
-      {/* Volumen */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-base font-semibold text-navy mb-4">Volumen de Aplicaciones</h2>
-        <VolumeChart data={volumen} />
-      </div>
+          {/* Funnel + Tiempos */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="text-base font-semibold text-navy mb-4">
+                Funnel de Conversion
+                {funnel?.porVacante && (
+                  <span className="text-sm font-normal text-muted-foreground ml-2">
+                    — {funnel.porVacante.vacanteTitulo}
+                  </span>
+                )}
+              </h2>
+              {funnel && <FunnelChart data={funnel} />}
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="text-base font-semibold text-navy mb-4">Dias promedio por etapa</h2>
+              {tiempos && <TimeMetrics tiempos={tiempos} />}
+            </div>
+          </div>
 
-      {/* Top Vacantes + Scores */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-base font-semibold text-navy mb-4">Top Vacantes por Conversion</h2>
-          <TopVacantesTable data={topVacantes} />
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-base font-semibold text-navy mb-4">Distribucion de Scores</h2>
-          <ScoresChart data={scores} />
-        </div>
-      </div>
+          {/* Volumen */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h2 className="text-base font-semibold text-navy mb-4">Volumen de Aplicaciones</h2>
+            <VolumeChart data={volumen} />
+          </div>
+
+          {/* Top Vacantes + Scores */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="text-base font-semibold text-navy mb-4">Top Vacantes por Conversion</h2>
+              <TopVacantesTable data={topVacantes} />
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="text-base font-semibold text-navy mb-4">Distribucion de Scores</h2>
+              <ScoresChart data={scores} />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="integridad">
+          <IntegridadEvaluaciones vacantes={vacantes} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

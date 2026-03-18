@@ -6,6 +6,7 @@ import {
   guardarRespuestas,
 } from '@/lib/services/evaluacion-tecnica.service';
 import { respuestasSubmitSchema } from '@/lib/validations/evaluacion.schema';
+import { pool } from '@/lib/db';
 
 /**
  * PUBLIC endpoint - no auth required.

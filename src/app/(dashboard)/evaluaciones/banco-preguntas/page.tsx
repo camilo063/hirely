@@ -9,12 +9,13 @@ import { Input } from '@/components/ui/input';
 import { TableSkeleton } from '@/components/shared/loading-skeleton';
 import { toast } from 'sonner';
 import {
-  Plus, Search, Upload, BookOpen, Edit2, Archive,
+  Plus, Search, Upload, BookOpen, Edit2, Archive, Sparkles,
 } from 'lucide-react';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from '@/components/ui/sheet';
 import { PreguntaForm } from '@/components/evaluaciones/pregunta-form';
+import { GenerarPreguntasIAModal } from '@/components/evaluaciones/generar-preguntas-ia-modal';
 import type { PreguntaBanco, CategoriaConteo, Dificultad, TipoPregunta } from '@/lib/types/evaluacion-tecnica.types';
 
 const DIFICULTAD_COLORS: Record<string, string> = {
@@ -42,6 +43,7 @@ export default function BancoPreguntasPage() {
   const [filterTipo, setFilterTipo] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingPregunta, setEditingPregunta] = useState<PreguntaBanco | null>(null);
+  const [iaModalOpen, setIaModalOpen] = useState(false);
 
   const fetchPreguntas = useCallback(async () => {
     setLoading(true);
@@ -122,6 +124,14 @@ export default function BancoPreguntasPage() {
           <Button variant="outline" className="gap-1.5" disabled>
             <Upload className="h-4 w-4" />
             Importar
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-1.5 border-purple-200 text-purple-700 hover:bg-purple-50"
+            onClick={() => setIaModalOpen(true)}
+          >
+            <Sparkles className="h-4 w-4" />
+            Generar con IA
           </Button>
           <Button className="bg-teal hover:bg-teal/90 gap-1.5" onClick={handleNew}>
             <Plus className="h-4 w-4" />
@@ -291,6 +301,17 @@ export default function BancoPreguntasPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Modal for AI question generation */}
+      <GenerarPreguntasIAModal
+        open={iaModalOpen}
+        onOpenChange={setIaModalOpen}
+        categorias={categorias.map(c => c.categoria)}
+        onSaved={() => {
+          fetchPreguntas();
+          fetchCategorias();
+        }}
+      />
     </div>
   );
 }
