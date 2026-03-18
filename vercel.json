@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/onboarding/procesar-programados",
+      "schedule": "0 8 * * *"
+    }
+  ]
+}

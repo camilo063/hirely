@@ -1,0 +1,43 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: hirely-db
+    environment:
+      POSTGRES_DB: hirely
+      POSTGRES_USER: hirely_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-hirely_dev_2026}
+    ports:
+      - "5434:5432"
+    volumes:
+      - hirely_pgdata:/var/lib/postgresql/data
+      - ./src/lib/db/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hirely_user -d hirely"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hirely-network
+
+  app:
+    build: .
+    container_name: hirely-app
+    ports:
+      - "3500:3000"
+    environment:
+      DATABASE_URL: postgresql://hirely_user:${DB_PASSWORD:-hirely_dev_2026}@db:5432/hirely
+      NEXTAUTH_URL: http://localhost:3500
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev-secret-change-in-production}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - hirely-network
+
+volumes:
+  hirely_pgdata:
+
+networks:
+  hirely-network:
+    driver: bridge
