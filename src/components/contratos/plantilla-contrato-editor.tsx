@@ -23,6 +23,8 @@ export function PlantillaContratoEditor() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [editShowPreview, setEditShowPreview] = useState(false);
 
   // New plantilla form
   const [showNew, setShowNew] = useState(false);
@@ -113,11 +115,8 @@ export function PlantillaContratoEditor() {
     }
   };
 
-  const getPreviewHtml = () => {
-    const html = selected?.contenido_html || newHtml || '';
-    // Generate sample data
-    const tipo = (selected?.tipo || newTipo) as TipoContrato;
-    const vars = VARIABLES_CONTRATO[tipo] || [];
+  const getPreviewHtmlFor = (html: string, tipo: string) => {
+    const vars = VARIABLES_CONTRATO[tipo as TipoContrato] || VARIABLES_CONTRATO['laboral'] || [];
     const sampleData: Record<string, string> = {};
     for (const v of vars) {
       sampleData[v.key] = v.default_value || `[${v.label}]`;
@@ -126,7 +125,18 @@ export function PlantillaContratoEditor() {
     sampleData.cedula = '1.234.567.890';
     sampleData.empresa_nombre = 'Empresa Demo S.A.S.';
     sampleData.cargo = 'Desarrollador Senior';
+    sampleData.correo = 'juan.perez@email.com';
+    sampleData.telefono = '+57 300 123 4567';
+    sampleData.fecha_inicio = new Date().toLocaleDateString('es-CO');
+    sampleData.fecha_contrato = new Date().toLocaleDateString('es-CO');
+    sampleData.salario = '5.000.000';
     return renderPlantillaContrato(html, sampleData);
+  };
+
+  const getPreviewHtml = () => {
+    const html = selected?.contenido_html || newHtml || '';
+    const tipo = selected?.tipo || newTipo;
+    return getPreviewHtmlFor(html, tipo);
   };
 
   if (loading) {
@@ -229,18 +239,35 @@ export function PlantillaContratoEditor() {
                       </div>
                     </div>
                     <div>
-                      <Label className="text-xs flex items-center gap-2">
-                        <Code className="h-3 w-3" /> HTML
-                      </Label>
-                      <Textarea
-                        value={selected.contenido_html}
-                        onChange={e => setSelected({ ...selected, contenido_html: e.target.value })}
-                        rows={10}
-                        className="font-mono text-xs"
-                      />
+                      <div className="flex items-center justify-between mb-1">
+                        <Label className="text-xs flex items-center gap-2">
+                          {editShowPreview ? <Eye className="h-3 w-3" /> : <Code className="h-3 w-3" />}
+                          {editShowPreview ? 'Vista previa' : 'HTML'}
+                        </Label>
+                        <button
+                          type="button"
+                          onClick={() => setEditShowPreview(!editShowPreview)}
+                          className="text-xs text-teal hover:underline"
+                        >
+                          {editShowPreview ? 'Editar HTML' : 'Vista previa'}
+                        </button>
+                      </div>
+                      {editShowPreview ? (
+                        <div
+                          className="border rounded-md p-4 bg-white min-h-[300px] max-h-[500px] overflow-y-auto text-sm"
+                          dangerouslySetInnerHTML={{ __html: getPreviewHtmlFor(selected.contenido_html, p.tipo) }}
+                        />
+                      ) : (
+                        <Textarea
+                          value={selected.contenido_html}
+                          onChange={e => setSelected({ ...selected, contenido_html: e.target.value })}
+                          rows={10}
+                          className="font-mono text-xs"
+                        />
+                      )}
                     </div>
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setSelected(null)}>Cancelar</Button>
+                      <Button variant="outline" size="sm" onClick={() => { setSelected(null); setEditShowPreview(false); }}>Cancelar</Button>
                       <Button size="sm" onClick={handleUpdate} disabled={saving} className="bg-teal hover:bg-teal/90 text-white">
                         {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
                         Guardar
@@ -248,22 +275,37 @@ export function PlantillaContratoEditor() {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-4 w-4 text-teal" />
-                      <div>
-                        <p className="text-sm font-medium">{p.nombre}</p>
-                        <p className="text-xs text-muted-foreground">{getTipoLabel(p.tipo)}</p>
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <FileText className="h-4 w-4 text-teal" />
+                        <div>
+                          <p className="text-sm font-medium">{p.nombre}</p>
+                          <p className="text-xs text-muted-foreground">{getTipoLabel(p.tipo)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPreviewId(previewId === p.id ? null : p.id)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" /> Vista previa
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setSelected(p)}>
+                          Editar
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(p.id)} className="text-destructive hover:text-destructive">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setSelected(p)}>
-                        Editar
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(p.id)} className="text-destructive hover:text-destructive">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    {previewId === p.id && (
+                      <div
+                        className="mt-3 border rounded-md p-4 bg-white max-h-[500px] overflow-y-auto text-sm"
+                        dangerouslySetInnerHTML={{ __html: getPreviewHtmlFor(p.contenido_html, p.tipo) }}
+                      />
+                    )}
                   </div>
                 )}
               </CardContent>
