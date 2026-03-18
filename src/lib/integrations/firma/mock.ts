@@ -18,7 +18,7 @@ export class MockFirmaProvider implements FirmaProvider {
 
     return {
       externalId,
-      signingUrl: `http://localhost:3500/mock-firma/${externalId}`,
+      signingUrl: `${process.env.NEXTAUTH_URL || process.env.APP_URL || ''}/mock-firma/${externalId}`,
       status: 'sent',
     };
   }

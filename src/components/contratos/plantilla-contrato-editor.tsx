@@ -15,6 +15,7 @@ import {
   TIPO_CONTRATO_LABELS, VARIABLES_CONTRATO,
 } from '@/lib/types/contrato.types';
 import { renderPlantillaContrato } from '@/lib/utils/plantillas-contrato-default';
+import { useTiposContrato } from '@/hooks/useTiposContrato';
 
 export function PlantillaContratoEditor() {
   const [plantillas, setPlantillas] = useState<PlantillaContrato[]>([]);
@@ -26,8 +27,9 @@ export function PlantillaContratoEditor() {
   // New plantilla form
   const [showNew, setShowNew] = useState(false);
   const [newNombre, setNewNombre] = useState('');
-  const [newTipo, setNewTipo] = useState<TipoContrato>('laboral');
+  const [newTipo, setNewTipo] = useState('laboral');
   const [newHtml, setNewHtml] = useState('');
+  const { tipos: tiposContrato, getTipoLabel } = useTiposContrato();
 
   const fetchPlantillas = useCallback(async () => {
     setLoading(true);
@@ -58,7 +60,7 @@ export function PlantillaContratoEditor() {
           nombre: newNombre,
           tipo: newTipo,
           contenido_html: newHtml,
-          variables: VARIABLES_CONTRATO[newTipo]?.map(v => v.key) || [],
+          variables: VARIABLES_CONTRATO[newTipo as TipoContrato]?.map(v => v.key) || [],
         }),
       });
       const data = await res.json();
@@ -153,11 +155,11 @@ export function PlantillaContratoEditor() {
               </div>
               <div>
                 <Label>Tipo</Label>
-                <Select value={newTipo} onValueChange={v => setNewTipo(v as TipoContrato)}>
+                <Select value={newTipo} onValueChange={v => setNewTipo(v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {(Object.entries(TIPO_CONTRATO_LABELS) as [TipoContrato, string][]).map(([k, l]) => (
-                      <SelectItem key={k} value={k}>{l}</SelectItem>
+                    {tiposContrato.map(t => (
+                      <SelectItem key={t.slug} value={t.slug}>{t.nombre}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -181,9 +183,9 @@ export function PlantillaContratoEditor() {
 
             {/* Variables reference */}
             <div>
-              <Label className="text-xs">Variables disponibles para {TIPO_CONTRATO_LABELS[newTipo]}:</Label>
+              <Label className="text-xs">Variables disponibles para {getTipoLabel(newTipo)}:</Label>
               <div className="flex flex-wrap gap-1 mt-1">
-                {(VARIABLES_CONTRATO[newTipo] || []).map(v => (
+                {(VARIABLES_CONTRATO[newTipo as TipoContrato] || VARIABLES_CONTRATO['laboral'] || []).map(v => (
                   <Badge key={v.key} variant="outline" className="text-[10px] cursor-pointer"
                     onClick={() => setNewHtml(prev => prev + `{{${v.key}}}`)}
                   >
@@ -223,7 +225,7 @@ export function PlantillaContratoEditor() {
                       </div>
                       <div>
                         <Label className="text-xs">Tipo</Label>
-                        <Input value={TIPO_CONTRATO_LABELS[p.tipo as TipoContrato] || p.tipo} disabled />
+                        <Input value={getTipoLabel(p.tipo)} disabled />
                       </div>
                     </div>
                     <div>
@@ -251,7 +253,7 @@ export function PlantillaContratoEditor() {
                       <FileText className="h-4 w-4 text-teal" />
                       <div>
                         <p className="text-sm font-medium">{p.nombre}</p>
-                        <p className="text-xs text-muted-foreground">{TIPO_CONTRATO_LABELS[p.tipo as TipoContrato] || p.tipo}</p>
+                        <p className="text-xs text-muted-foreground">{getTipoLabel(p.tipo)}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

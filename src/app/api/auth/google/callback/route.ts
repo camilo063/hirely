@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOrgId, getUserId } from '@/lib/auth/middleware';
 import { intercambiarCodigo } from '@/lib/integrations/google-calendar.client';
 import { pool } from '@/lib/db';
+import { getAppUrl } from '@/lib/utils/url';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     const state = searchParams.get('state');
     const error = searchParams.get('error');
 
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3500';
+    const baseUrl = getAppUrl();
 
     if (error) {
       return NextResponse.redirect(`${baseUrl}/configuracion?tab=integraciones&google=error&message=${error}`);
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (err) {
     console.error('[Google OAuth Callback] Error:', err);
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3500';
+    const baseUrl = getAppUrl();
     return NextResponse.redirect(`${baseUrl}/configuracion?tab=integraciones&google=error`);
   }
 }

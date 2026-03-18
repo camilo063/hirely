@@ -14,6 +14,7 @@ import { ChecklistConfig } from '@/components/configuracion/checklist-config';
 import { PlantillaEditor } from '@/components/onboarding/plantilla-editor';
 import { DocumentosOnboardingConfig } from '@/components/onboarding/documentos-onboarding-config';
 import { PlantillaContratoEditor } from '@/components/contratos/plantilla-contrato-editor';
+import { TiposContratoConfig } from '@/components/configuracion/tipos-contrato-config';
 import { toast } from 'sonner';
 
 export default function ConfiguracionPageWrapper() {
@@ -200,12 +201,20 @@ function ConfiguracionPage() {
         </TabsContent>
 
         <TabsContent value="contratos">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Plantillas de contratos</CardTitle></CardHeader>
-            <CardContent>
-              <PlantillaContratoEditor />
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Tipos de contrato</CardTitle></CardHeader>
+              <CardContent>
+                <TiposContratoConfig />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Plantillas de contratos</CardTitle></CardHeader>
+              <CardContent>
+                <PlantillaContratoEditor />
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="integraciones">

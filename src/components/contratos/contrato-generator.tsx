@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TIPOS_CONTRATO, MONEDAS, JORNADAS } from '@/lib/utils/constants';
+import { MONEDAS, JORNADAS } from '@/lib/utils/constants';
+import { useTiposContrato } from '@/hooks/useTiposContrato';
 import { toast } from 'sonner';
 import { Plus, X } from 'lucide-react';
 
@@ -26,6 +27,7 @@ export function ContratoGenerator({
   const [loading, setLoading] = useState(false);
   const [beneficios, setBeneficios] = useState<string[]>([]);
   const [nuevoBeneficio, setNuevoBeneficio] = useState('');
+  const { tipos: tiposContrato } = useTiposContrato();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -123,8 +125,8 @@ export function ContratoGenerator({
               <Select name="tipo_contrato">
                 <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                 <SelectContent>
-                  {TIPOS_CONTRATO.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  {tiposContrato.map((t) => (
+                    <SelectItem key={t.slug} value={t.slug}>{t.nombre}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

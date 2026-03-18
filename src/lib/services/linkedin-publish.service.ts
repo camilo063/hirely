@@ -12,7 +12,10 @@ import { createUnipileClient } from '@/lib/integrations/unipile.client';
  * Priority: unipile > api > deeplink
  */
 
-const APP_BASE_URL = process.env.NEXTAUTH_URL || 'http://localhost:3500';
+// Lazy getter to avoid throwing at module load if env var is missing
+function getBaseUrl() {
+  return process.env.NEXTAUTH_URL || process.env.APP_URL || '';
+}
 
 export function getLinkedInMode(): LinkedInIntegrationMode {
   const envMode = process.env.LINKEDIN_INTEGRATION_MODE;
@@ -38,7 +41,7 @@ export function getLinkedInMode(): LinkedInIntegrationMode {
 
 export async function publishToLinkedIn(vacante: Vacante): Promise<LinkedInPublishResult> {
   const mode = getLinkedInMode();
-  const content = formatVacanteForLinkedIn(vacante, APP_BASE_URL);
+  const content = formatVacanteForLinkedIn(vacante, getBaseUrl());
 
   if (mode === 'unipile') {
     return await publishViaUnipile(vacante, content);

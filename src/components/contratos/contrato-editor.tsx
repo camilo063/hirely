@@ -12,8 +12,9 @@ import { toast } from 'sonner';
 import { Save, RotateCcw, History, Loader2, Code, FileText } from 'lucide-react';
 import {
   ContratoConDetalles, ContratoVersion, DatosContrato,
-  TipoContrato, VARIABLES_CONTRATO, TIPO_CONTRATO_LABELS,
+  TipoContrato, VARIABLES_CONTRATO,
 } from '@/lib/types/contrato.types';
+import { useTiposContrato } from '@/hooks/useTiposContrato';
 
 interface Props {
   contrato: ContratoConDetalles;
@@ -29,8 +30,9 @@ export function ContratoEditor({ contrato, onSaved }: Props) {
   const [versiones, setVersiones] = useState<ContratoVersion[]>([]);
   const [showVersiones, setShowVersiones] = useState(false);
 
-  const tipo = (contrato.tipo || 'laboral') as TipoContrato;
-  const variables = VARIABLES_CONTRATO[tipo] || [];
+  const { getTipoLabel } = useTiposContrato();
+  const tipo = contrato.tipo || 'laboral';
+  const variables = VARIABLES_CONTRATO[tipo as TipoContrato] || VARIABLES_CONTRATO['laboral'] || [];
   const isEditable = contrato.estado === 'borrador' || contrato.estado === 'generado';
 
   const fetchVersiones = useCallback(async () => {
@@ -148,7 +150,7 @@ export function ContratoEditor({ contrato, onSaved }: Props) {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                {TIPO_CONTRATO_LABELS[tipo] || tipo}
+                {getTipoLabel(tipo)}
                 <Badge variant="secondary" className="text-xs">v{contrato.version || 1}</Badge>
               </CardTitle>
             </CardHeader>

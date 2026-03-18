@@ -66,7 +66,7 @@ export async function getContrato(orgId: UUID, contratoId: UUID): Promise<Contra
 export async function autoPoblarDatos(
   orgId: UUID,
   aplicacionId: UUID,
-  tipo: TipoContrato
+  tipo: TipoContrato | string
 ): Promise<Partial<DatosContrato>> {
   const result = await pool.query(
     `SELECT
@@ -119,7 +119,7 @@ export async function autoPoblarDatos(
   };
 
   // Set defaults from VARIABLES_CONTRATO
-  const variables = VARIABLES_CONTRATO[tipo] || [];
+  const variables = VARIABLES_CONTRATO[tipo as TipoContrato] || VARIABLES_CONTRATO['laboral'] || [];
   for (const v of variables) {
     if (v.default_value && !datos[v.key]) {
       (datos as Record<string, unknown>)[v.key] = v.default_value;

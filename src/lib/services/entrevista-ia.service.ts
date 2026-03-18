@@ -1,4 +1,5 @@
 import { pool } from '@/lib/db';
+import { getAppUrl } from '@/lib/utils/url';
 import { createDaptaClient } from '@/lib/integrations/dapta.client';
 import { analizarTranscripcion, calcularScoreEntrevistaIA } from './entrevista-analisis.service';
 import type { EntrevistaIA, DaptaWebhookPayload, PreguntasEntrevistaConfig, EntrevistaIAConDetalles } from '@/lib/types/entrevista.types';
@@ -92,7 +93,7 @@ export async function iniciarEntrevistaIA(
     return { entrevistaId, status: 'dapta_not_configured' };
   }
 
-  const callbackUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3500'}/api/webhooks/dapta`;
+  const callbackUrl = `${getAppUrl()}/api/webhooks/dapta`;
 
   const callResult = await daptaClient.triggerInterviewCall({
     candidatoTelefono: app.candidato_telefono,

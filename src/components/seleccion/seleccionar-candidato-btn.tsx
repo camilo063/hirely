@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScoreBadge } from '@/components/candidatos/score-badge';
 import { toast } from 'sonner';
+import { useTiposContrato } from '@/hooks/useTiposContrato';
 
 interface Props {
   aplicacionId: string;
@@ -42,6 +43,7 @@ export function SeleccionarCandidatoBtn({
   const [loading, setLoading] = useState(false);
   const [tipoContrato, setTipoContrato] = useState('');
   const [fechaInicio, setFechaInicio] = useState('');
+  const { tipos: tiposContrato } = useTiposContrato();
   const [salario, setSalario] = useState('');
   const [mensaje, setMensaje] = useState('');
   const [enviarEmail, setEnviarEmail] = useState(true);
@@ -173,9 +175,9 @@ export function SeleccionarCandidatoBtn({
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-white mt-1"
               >
                 <option value="">Sin especificar</option>
-                <option value="laboral">Laboral</option>
-                <option value="prestacion_servicios">Prestacion de servicios</option>
-                <option value="horas_demanda">Horas/Demanda</option>
+                {tiposContrato.map(t => (
+                  <option key={t.slug} value={t.slug}>{t.nombre}</option>
+                ))}
               </select>
             </div>
 

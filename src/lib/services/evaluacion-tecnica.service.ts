@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { pool } from '@/lib/db';
+import { getAppUrl } from '@/lib/utils/url';
 import { seleccionarPreguntas } from './banco-preguntas.service';
 import { calcularScoreEvaluacion } from './evaluacion-scoring.service';
 import type {
@@ -84,7 +85,7 @@ export async function enviarEvaluacion(evaluacionId: string, orgId: string): Pro
     throw new Error(`No se puede enviar una evaluación en estado: ${ev.estado}`);
   }
 
-  const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3500';
+  const baseUrl = getAppUrl();
   const url = `${baseUrl}/evaluacion/${ev.token_acceso}`;
   const expiraAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
 

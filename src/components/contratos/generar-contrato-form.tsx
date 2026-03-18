@@ -13,9 +13,10 @@ import { toast } from 'sonner';
 import { Loader2, FileText, Eye, Wand2 } from 'lucide-react';
 import {
   TipoContrato, DatosContrato, PlantillaContrato,
-  VARIABLES_CONTRATO, TIPO_CONTRATO_LABELS, VariableContrato,
+  VARIABLES_CONTRATO, VariableContrato,
 } from '@/lib/types/contrato.types';
 import { renderPlantillaContrato, PLANTILLAS_CONTRATO_DEFAULT } from '@/lib/utils/plantillas-contrato-default';
+import { useTiposContrato } from '@/hooks/useTiposContrato';
 
 interface Props {
   aplicacionId: string;
@@ -31,15 +32,16 @@ export function GenerarContratoForm({
   aplicacionId, candidatoId, vacanteId,
   candidatoNombre, vacanteTitulo, onSuccess, onCancel,
 }: Props) {
-  const [tipo, setTipo] = useState<TipoContrato>('laboral');
+  const [tipo, setTipo] = useState('laboral');
   const [datos, setDatos] = useState<Partial<DatosContrato>>({});
   const [plantillaId, setPlantillaId] = useState<string | null>(null);
   const [plantillas, setPlantillas] = useState<PlantillaContrato[]>([]);
   const [loading, setLoading] = useState(false);
   const [autoLoading, setAutoLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('datos');
+  const { tipos: tiposContrato } = useTiposContrato();
 
-  const variables = VARIABLES_CONTRATO[tipo] || [];
+  const variables = VARIABLES_CONTRATO[tipo as TipoContrato] || VARIABLES_CONTRATO['laboral'] || [];
 
   const fetchPlantillas = useCallback(async () => {
     try {
@@ -78,7 +80,7 @@ export function GenerarContratoForm({
 
   const getPreviewHtml = () => {
     const tpl = plantillas.find(p => p.id === plantillaId);
-    const template = tpl?.contenido_html || PLANTILLAS_CONTRATO_DEFAULT[tipo]?.contenido_html || '';
+    const template = tpl?.contenido_html || PLANTILLAS_CONTRATO_DEFAULT[tipo as TipoContrato]?.contenido_html || '';
     return renderPlantillaContrato(template, datos as Record<string, unknown>);
   };
 
@@ -179,11 +181,11 @@ export function GenerarContratoForm({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label>Tipo de contrato</Label>
-          <Select value={tipo} onValueChange={(v) => { setTipo(v as TipoContrato); }}>
+          <Select value={tipo} onValueChange={(v) => setTipo(v)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {(Object.entries(TIPO_CONTRATO_LABELS) as [TipoContrato, string][]).map(([k, label]) => (
-                <SelectItem key={k} value={k}>{label}</SelectItem>
+              {tiposContrato.map(t => (
+                <SelectItem key={t.slug} value={t.slug}>{t.nombre}</SelectItem>
               ))}
             </SelectContent>
           </Select>

@@ -4,6 +4,7 @@
  */
 
 import { pool } from '@/lib/db';
+import { getAppUrl } from '@/lib/utils/url';
 import { sendEmail } from './email.service';
 import { emailSeleccionTemplate, emailRechazoTemplate, emailDocumentosCompletosTemplate } from '@/lib/utils/email-templates';
 import { randomBytes } from 'crypto';
@@ -124,7 +125,7 @@ export async function seleccionarCandidato(
     await client.query('COMMIT');
 
     // 7. Send selection email (outside transaction)
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3500';
+    const baseUrl = getAppUrl();
     const portalUrl = `${baseUrl}/portal/documentos/${portalToken}`;
 
     if (payload.enviar_email_seleccion && app.candidato_email) {
@@ -272,7 +273,7 @@ export async function getChecklistDocumentos(
   const completo = requeridosFaltantes.length === 0 && documentos.length > 0;
 
   const portalToken = appResult.rows[0].portal_token;
-  const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3500';
+  const baseUrl = getAppUrl();
   const portalUrl = portalToken ? `${baseUrl}/portal/documentos/${portalToken}` : null;
 
   return { documentos, completo, portalUrl };
@@ -526,7 +527,7 @@ async function notifyDocumentosCompletos(aplicacionId: string): Promise<void> {
     if (result.rows.length === 0) return;
     const data = result.rows[0];
 
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3500';
+    const baseUrl = getAppUrl();
     const emailData = emailDocumentosCompletosTemplate({
       reclutadorNombre: data.recruiter_nombre || 'Reclutador',
       candidatoNombre: `${data.candidato_nombre} ${data.candidato_apellido || ''}`.trim(),

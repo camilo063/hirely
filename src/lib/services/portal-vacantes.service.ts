@@ -1,4 +1,5 @@
 import { pool } from '@/lib/db';
+import { getAppUrl } from '@/lib/utils/url';
 
 // --- Types ---
 
@@ -84,7 +85,7 @@ export async function publicarVacante(
     [slug, vacanteId]
   );
 
-  const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3500';
+  const baseUrl = getAppUrl();
   return { slug, publicUrl: `${baseUrl}/empleo/${slug}` };
 }
 

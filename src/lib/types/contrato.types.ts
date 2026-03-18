@@ -130,6 +130,20 @@ export interface UpdateContratoInput {
   nota_cambio?: string;
 }
 
+// ─── TIPO CONTRATO (DYNAMIC) ─────────────────
+
+export interface TipoContratoRow {
+  id: string;
+  organization_id: string;
+  nombre: string;
+  slug: string;
+  descripcion: string | null;
+  is_active: boolean;
+  is_system: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── VARIABLES POR TIPO ───────────────────────
 
 export const VARIABLES_CONTRATO: Record<TipoContrato, VariableContrato[]> = {

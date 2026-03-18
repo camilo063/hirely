@@ -9,7 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CriteriosPonderacion } from './criterios-ponderacion';
-import { DEPARTAMENTOS, TIPOS_CONTRATO, MONEDAS, MODALIDADES } from '@/lib/utils/constants';
+import { DEPARTAMENTOS, MONEDAS, MODALIDADES } from '@/lib/utils/constants';
+import { useTiposContrato } from '@/hooks/useTiposContrato';
 import { DEFAULT_CRITERIOS } from '@/lib/types/scoring.types';
 import type { CriteriosEvaluacion } from '@/lib/types/scoring.types';
 import { toast } from 'sonner';
@@ -23,6 +24,7 @@ interface VacanteFormProps {
 export function VacanteForm({ initialData, isEditing = false }: VacanteFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const { tipos: tiposContrato } = useTiposContrato();
   const [criterios, setCriterios] = useState<any>(
     (initialData?.criterios_evaluacion as any) || { ...DEFAULT_CRITERIOS }
   );
@@ -122,8 +124,8 @@ export function VacanteForm({ initialData, isEditing = false }: VacanteFormProps
               <Select name="tipo_contrato" defaultValue={(initialData?.tipo_contrato as string) || ''}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                 <SelectContent>
-                  {TIPOS_CONTRATO.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  {tiposContrato.map((t) => (
+                    <SelectItem key={t.slug} value={t.slug}>{t.nombre}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

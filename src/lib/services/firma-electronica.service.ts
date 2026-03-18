@@ -8,6 +8,7 @@
 import { pool } from '../db';
 import { UUID } from '../types/common.types';
 import { NotFoundError } from '../utils/errors';
+import { getAppUrl } from '../utils/url';
 import { crearFirmaProvider } from '../integrations/firma';
 import type { Signatario } from '../integrations/firma';
 
@@ -44,7 +45,7 @@ export async function enviarParaFirma(
     }
 
     const candidatoNombre = `${contrato.candidato_nombre} ${contrato.candidato_apellido || ''}`.trim();
-    const appUrl = process.env.APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3500';
+    const appUrl = getAppUrl();
 
     const signatarios: Signatario[] = [
       {

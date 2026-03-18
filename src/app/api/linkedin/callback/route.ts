@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, getOrgId, getUserId } from '@/lib/auth/middleware';
 import { exchangeCodeForToken, getProfile } from '@/lib/integrations/linkedin.client';
 import { saveLinkedInToken } from '@/lib/services/linkedin.service';
+import { getAppUrl } from '@/lib/utils/url';
 
 export async function GET(request: NextRequest) {
-  const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3500';
+  const baseUrl = getAppUrl();
   const redirectBase = `${baseUrl}/configuracion?tab=integraciones`;
 
   try {

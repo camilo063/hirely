@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/middleware';
 import { getAuthUrl } from '@/lib/integrations/google-calendar.client';
+import { getAppUrl } from '@/lib/utils/url';
 import { randomBytes } from 'crypto';
 
 export async function GET() {
@@ -21,6 +22,6 @@ export async function GET() {
 
     return response;
   } catch {
-    return NextResponse.redirect(new URL('/login', process.env.NEXTAUTH_URL || 'http://localhost:3500'));
+    return NextResponse.redirect(new URL('/login', getAppUrl()));
   }
 }

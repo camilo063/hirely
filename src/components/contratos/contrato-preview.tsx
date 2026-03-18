@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Printer, Download, Send, Loader2, Eye } from 'lucide-react';
-import { ContratoConDetalles, ESTADO_CONTRATO_LABELS, TIPO_CONTRATO_LABELS, TipoContrato, EstadoContrato } from '@/lib/types/contrato.types';
+import { ContratoConDetalles, ESTADO_CONTRATO_LABELS, EstadoContrato } from '@/lib/types/contrato.types';
+import { useTiposContrato } from '@/hooks/useTiposContrato';
 
 interface Props {
   contrato: ContratoConDetalles;
@@ -17,11 +18,12 @@ export function ContratoPreview({ contrato, onEstadoChange }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [sendLoading, setSendLoading] = useState(false);
 
+  const { getTipoLabel } = useTiposContrato();
   const estadoInfo = ESTADO_CONTRATO_LABELS[contrato.estado as EstadoContrato] || {
     label: contrato.estado,
     color: 'bg-gray-100 text-gray-600',
   };
-  const tipoLabel = TIPO_CONTRATO_LABELS[contrato.tipo as TipoContrato] || contrato.tipo;
+  const tipoLabel = getTipoLabel(contrato.tipo);
 
   const handlePrint = () => {
     const iframe = iframeRef.current;

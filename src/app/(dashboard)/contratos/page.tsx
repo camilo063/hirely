@@ -15,9 +15,10 @@ import {
 } from '@/components/ui/table';
 import {
   ContratoConDetalles,
-  ESTADO_CONTRATO_LABELS, TIPO_CONTRATO_LABELS,
-  EstadoContrato, TipoContrato,
+  ESTADO_CONTRATO_LABELS,
+  EstadoContrato,
 } from '@/lib/types/contrato.types';
+import { useTiposContrato } from '@/hooks/useTiposContrato';
 import { cn } from '@/lib/utils';
 
 export default function ContratosPage() {
@@ -26,6 +27,7 @@ export default function ContratosPage() {
   const [search, setSearch] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
+  const { tipos: tiposContrato, getTipoLabel } = useTiposContrato();
 
   const fetchContratos = useCallback(async () => {
     try {
@@ -140,8 +142,8 @@ export default function ContratosPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los tipos</SelectItem>
-            {(Object.entries(TIPO_CONTRATO_LABELS) as [TipoContrato, string][]).map(([k, label]) => (
-              <SelectItem key={k} value={k}>{label}</SelectItem>
+            {tiposContrato.map(t => (
+              <SelectItem key={t.slug} value={t.slug}>{t.nombre}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -171,7 +173,7 @@ export default function ContratosPage() {
             <TableBody>
               {contratos.map((contrato) => {
                 const estadoInfo = ESTADO_CONTRATO_LABELS[contrato.estado as EstadoContrato];
-                const tipoLabel = TIPO_CONTRATO_LABELS[contrato.tipo as TipoContrato] || contrato.tipo;
+                const tipoLabel = getTipoLabel(contrato.tipo);
                 return (
                   <TableRow key={contrato.id} className="cursor-pointer hover:bg-muted/50">
                     <TableCell>

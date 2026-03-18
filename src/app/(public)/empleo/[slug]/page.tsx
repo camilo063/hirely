@@ -14,7 +14,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const description = vacante.descripcion
     .replace(/<[^>]*>/g, '')
     .substring(0, 160);
-  const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3500';
+  const baseUrl = process.env.NEXTAUTH_URL || process.env.APP_URL || '';
 
   return {
     title: `${vacante.titulo} en ${vacante.empresa_nombre} | Empleo`,
@@ -64,8 +64,10 @@ export default async function PublicVacanteSlugPage({
     remoto: 'Remoto', hibrido: 'Hibrido', presencial: 'Presencial',
   };
   const contratoLabels: Record<string, string> = {
-    laboral: 'Tiempo completo', prestacion_servicios: 'Prestacion de servicios',
-    horas_demanda: 'Medio tiempo',
+    indefinido: 'Indefinido', termino_fijo: 'Termino fijo',
+    prestacion_servicios: 'Prestacion de servicios', obra_labor: 'Obra o labor',
+    aprendizaje: 'Aprendizaje', laboral: 'Tiempo completo',
+    horas_demanda: 'Medio tiempo', por_servicios: 'Por servicios',
   };
 
   return (

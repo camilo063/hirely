@@ -40,7 +40,7 @@ export const contratoCreateSchema = z.object({
   candidato_id: z.string().uuid('ID de candidato invalido').optional(),
   vacante_id: z.string().uuid('ID de vacante invalido').optional(),
   plantilla_id: z.string().uuid().nullable().optional(),
-  tipo: z.enum(['prestacion_servicios', 'horas_demanda', 'laboral']).optional(),
+  tipo: z.string().min(1).optional(),
   datos: datosContratoSchema,
 });
 
