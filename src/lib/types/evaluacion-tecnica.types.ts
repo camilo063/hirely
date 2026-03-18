@@ -118,6 +118,7 @@ export interface Evaluacion {
   enviada_at: string | null;
   iniciada_at: string | null;
   completada_at: string | null;
+  eventos_seguridad: Array<{ tipo: string; timestamp: string }>;
   asignado_por: string | null;
   created_at: string;
   updated_at: string;

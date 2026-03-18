@@ -12,9 +12,9 @@ Plataforma SaaS multi-tenant de reclutamiento y seleccion de personal, construid
 | Base de datos | PostgreSQL 16 (Docker) |
 | Validacion | Zod 4.3 |
 | Estado | Zustand 5.0 |
-| IA | Claude API (CV parsing, analisis de entrevistas) |
+| IA | Claude API (CV parsing, analisis de entrevistas, generacion de preguntas, scoring de respuestas abiertas) |
 | Charts | Recharts 3.7 |
-| Integraciones | LinkedIn OAuth, Dapta (voz IA), DocuSign, SendGrid, Unipile, Google Calendar |
+| Integraciones | LinkedIn OAuth, Dapta (voz IA), SignWell/DocuSign, Resend, Unipile, Google Calendar |
 
 ## Inicio Rapido
 
@@ -75,7 +75,7 @@ src/
 │   │   └── vacantes/        # Vacantes y pipeline
 │   ├── (public)/            # Portal publico de empleo
 │   │   └── empleo/[slug]/   # Pagina publica de vacante + aplicacion
-│   ├── api/                 # 62 rutas API REST
+│   ├── api/                 # 65+ rutas API REST
 │   ├── auth/                # Flujos OAuth LinkedIn
 │   ├── evaluacion/[token]/  # Formulario publico de evaluacion tecnica
 │   └── portal/              # Portal publico de documentos
@@ -91,11 +91,11 @@ src/
 │   ├── shared/              # Data table, empty state, confirm dialog, loading
 │   ├── ui/                  # 27 shadcn/ui components
 │   └── vacantes/            # Card, form, status selector, LinkedIn publisher
-├── hooks/                   # 5 custom hooks (useDebounce, useCandidatos, useVacantes, useLinkedin, useToast)
+├── hooks/                   # 6 custom hooks (useDebounce, useCandidatos, useVacantes, useLinkedin, useToast, useReportes)
 ├── lib/
 │   ├── auth/                # NextAuth config + API middleware helpers
-│   ├── db/                  # Pool de conexion + 13 migraciones SQL
-│   │   ├── migrations/      # 001-013 migraciones
+│   ├── db/                  # Pool de conexion + 19 migraciones SQL
+│   │   ├── migrations/      # 001-019 migraciones
 │   │   └── seeds/           # Preguntas iniciales de evaluacion
 │   ├── integrations/        # 10 clientes externos (Anthropic, Dapta, LinkedIn, DocuSign, SendGrid, etc.)
 │   ├── services/            # 24 servicios de logica de negocio
@@ -106,7 +106,7 @@ src/
 └── middleware.ts            # Edge middleware (proteccion de rutas)
 ```
 
-**Totales:** 255 archivos TypeScript/TSX, 77 componentes, 62 endpoints API, 24 servicios, 13 migraciones
+**Totales:** 265+ archivos TypeScript/TSX, 80+ componentes, 65+ endpoints API, 25+ servicios, 19 migraciones
 
 ---
 
@@ -243,14 +243,34 @@ src/
   - Tabla comparativa con scores ATS, IA, Humano, Tecnico y Final
 - **Evaluaciones Tecnicas**:
   - Banco de preguntas con categorias, subcategorias, puntos y tiempo estimado
-  - Tipos de pregunta: opcion multiple, verdadero/falso, respuesta abierta
+  - Tipos de pregunta: opcion multiple, verdadero/falso, respuesta abierta, codigo
   - Plantillas de evaluacion reutilizables con duracion y puntaje aprobatorio
-  - Envio de evaluacion al candidato via token unico con expiracion
+  - Envio de evaluacion al candidato via token unico con expiracion (72h)
   - Formulario publico `/evaluacion/[token]` para que el candidato responda
-  - Scoring automatico + merge con score ATS y entrevistas
+  - Scoring automatico (opcion multiple/V-F exacto, respuesta abierta/codigo via Claude AI)
   - Importacion masiva de preguntas
+- **Generacion de Preguntas con IA**:
+  - Boton "Generar con IA" en el banco de preguntas
+  - Modal de configuracion: categoria, subcategoria, tipo(s), dificultad, cantidad (1-10), cargo objetivo, idioma, instrucciones adicionales
+  - Llamada a Claude API con prompt estructurado para generar preguntas de alta calidad
+  - Vista previa de preguntas generadas con opcion de incluir/excluir y edicion inline
+  - Guardado selectivo al banco de preguntas
+  - Regeneracion con mismos parametros
+- **Seguridad Anti-Trampa** (portal del candidato):
+  - Bloqueo de copy/paste (Ctrl+C/X/A) con toast informativo
+  - Bloqueo de clic derecho (menu contextual)
+  - Bloqueo de seleccion de texto (`select-none`)
+  - Deteccion de cambio de pestana/foco con contador
+  - Advertencia progresiva: toast informativo (1ra salida) → modal de advertencia (3+ salidas)
+  - Badge "Evaluacion protegida · Actividad monitoreada" con tooltip
+  - Registro silencioso de eventos en BD (`eventos_seguridad` JSONB)
+  - Medidas disuasivas, no bloqueantes — solo registra y advierte
+- **Reporte de Integridad** (vista admin):
+  - Seccion "Reporte de Integridad" en detalle de evaluacion completada
+  - Conteo de cambios de pestana e intentos de copia
+  - Badge de estado: sin incidentes / actividad moderada / actividad sospechosa
 
-**Servicios:** scoring-dual, scoring-pipeline, evaluacion-tecnica, evaluacion-scoring, banco-preguntas
+**Servicios:** scoring-dual, scoring-pipeline, evaluacion-tecnica, evaluacion-scoring, banco-preguntas, generar-preguntas-ia
 
 **API Routes:**
 - `POST /api/scoring` — calcular scoring ATS por pipeline
@@ -262,9 +282,11 @@ src/
 - `GET/POST/DELETE /api/evaluaciones/banco-preguntas/[id]` — pregunta individual
 - `GET /api/evaluaciones/banco-preguntas/categorias` — categorias disponibles
 - `POST /api/evaluaciones/banco-preguntas/importar` — importacion masiva
+- `POST /api/evaluaciones/banco-preguntas/generar-ia` — generacion de preguntas con Claude AI
 - `GET/POST/DELETE /api/evaluaciones/plantillas` — plantillas CRUD
 - `GET/POST/DELETE /api/evaluaciones/plantillas/[id]` — plantilla individual
 - `GET/POST /api/evaluaciones/responder/[token]` — formulario publico
+- `POST /api/evaluacion/[token]/seguridad` — registro de eventos de seguridad (publico, solo token)
 
 ---
 
@@ -378,6 +400,42 @@ src/
 
 ---
 
+### Modulo 10: Reportes y Analytics
+
+**Paginas:** `/reportes`
+
+- **Tab Pipeline** — metricas generales del proceso de contratacion:
+  - KPIs: vacantes activas, total candidatos, contratados (90d), tasa de conversion
+  - Funnel de conversion por etapas (filtrable por vacante)
+  - Dias promedio por etapa del pipeline
+  - Volumen de aplicaciones semanal (grafico de barras)
+  - Top vacantes por tasa de conversion
+  - Distribucion de scores (histograma)
+  - Filtros: periodo (7d/30d/90d/180d/365d/custom), vacante
+- **Tab Integridad** — analytics de seguridad de evaluaciones tecnicas:
+  - 5 KPI cards: evaluaciones completadas, sin incidentes (%), riesgo medio, riesgo alto, indice de riesgo promedio
+  - Insight de correlacion riesgo-score (condicional, aparece si diferencia >= 5 puntos)
+  - Grafico de barras: distribucion de incidentes (0, 1-2, 3-5, 6+ eventos)
+  - Grafico de pie: tipo de evento (cambios de pestana vs intentos de copia)
+  - Filtros: vacante, nivel de riesgo, rango de fechas
+  - Tabla de evaluaciones con riesgo: candidato, vacante, cambios pestana, intentos copia, score, nivel riesgo, fecha
+  - Export CSV con todos los datos
+  - 3 vistas SQL: `v_integridad_evaluaciones`, `v_kpis_integridad`, `v_distribucion_incidentes`
+
+**Servicios:** reportes
+
+**API Routes:**
+- `GET /api/reportes/kpis` — KPIs generales
+- `GET /api/reportes/funnel` — funnel de conversion
+- `GET /api/reportes/tiempos` — tiempos por etapa
+- `GET /api/reportes/volumen` — volumen semanal
+- `GET /api/reportes/top-vacantes` — top vacantes
+- `GET /api/reportes/scores` — distribucion de scores
+- `GET /api/reportes/exportar` — exportar datos
+- `GET /api/reportes/integridad` — analytics de integridad de evaluaciones (KPIs, tabla, distribucion)
+
+---
+
 ## Maquinas de Estado
 
 ```
@@ -394,7 +452,7 @@ CONTRATO:    borrador → generado → enviado → firmado / rechazado
 
 ONBOARDING EMAIL:  pendiente → programado → enviado / error
 
-EVALUACION TECNICA: pendiente → enviada → iniciada → completada
+EVALUACION TECNICA: pendiente → enviada → en_progreso → completada / expirada / cancelada
 ```
 
 ## Flujo Completo de Contratacion
@@ -415,7 +473,7 @@ EVALUACION TECNICA: pendiente → enviada → iniciada → completada
 
 ## Base de Datos
 
-### Migraciones (13)
+### Migraciones (19)
 
 | # | Archivo | Descripcion |
 |---|---------|-------------|
@@ -432,6 +490,12 @@ EVALUACION TECNICA: pendiente → enviada → iniciada → completada
 | 011 | `contratos_enhanced.sql` | contrato_versiones + campos de firma |
 | 012 | `portal_publico_vacantes.sql` | Portal publico: slug, is_published, views/applications count |
 | 013 | `evaluaciones_tecnicas.sql` | preguntas_banco, evaluacion_plantillas, evaluaciones |
+| 014 | `google_calendar.sql` | google_tokens, calendar_events |
+| 015 | `firma_campos.sql` | Campos de firma digital en contratos |
+| 016 | `reportes_analytics.sql` | Vistas SQL: v_kpis_generales, v_tiempos_por_etapa, v_volumen_semanal, fn_top_vacantes_conversion |
+| 017 | `tipos_contrato.sql` | Tabla tipos_contrato con 3 tipos colombianos |
+| 018 | `evaluaciones_seguridad.sql` | Columna eventos_seguridad JSONB en evaluaciones + indice GIN |
+| 019 | `analytics_integridad.sql` | Vistas SQL: v_integridad_evaluaciones, v_kpis_integridad, v_distribucion_incidentes |
 
 ### Tablas Principales
 
@@ -452,7 +516,10 @@ EVALUACION TECNICA: pendiente → enviada → iniciada → completada
 - **linkedin_job_syncs** — tracking de sincronizacion
 - **preguntas_banco** — banco de preguntas tecnicas (categoria, tipo, puntos)
 - **evaluacion_plantillas** — plantillas de evaluacion reutilizables
-- **evaluaciones** — evaluaciones asignadas a candidatos (token, respuestas, score)
+- **evaluaciones** — evaluaciones asignadas a candidatos (token, respuestas, score, eventos_seguridad)
+- **google_tokens** — tokens OAuth de Google (Calendar, Meet)
+- **calendar_events** — vinculacion entrevista-evento de Google Calendar
+- **tipos_contrato** — tipos de contrato configurables (15 registros seed)
 - **activity_log** — auditoria de acciones
 
 ---
@@ -461,14 +528,14 @@ EVALUACION TECNICA: pendiente → enviada → iniciada → completada
 
 | Servicio | Uso | Estado |
 |----------|-----|--------|
-| **Claude API (Anthropic)** | CV parsing, analisis de entrevistas | Funcional |
+| **Claude API (Anthropic)** | CV parsing, analisis de entrevistas, generacion de preguntas, scoring de respuestas abiertas | Funcional |
 | **LinkedIn OAuth** | Login candidato, publicar vacantes, sync aplicantes | Funcional |
 | **Dapta** | Entrevistas telefonicas con agente de voz IA | Funcional (requiere API key) |
 | **Unipile** | Automatizacion LinkedIn, job posting, applicant sync | Funcional (requiere cuenta) |
-| **DocuSign** | Firma electronica de contratos | Mock (preparado para produccion) |
-| **Signable** | Firma electronica alternativa | Placeholder |
-| **SendGrid** | Emails transaccionales | Configurado (requiere API key) |
-| **Google Calendar** | Agendamiento de entrevistas | Placeholder |
+| **SignWell** | Firma electronica de contratos (produccion) | Funcional (requiere API key) |
+| **DocuSign** | Firma electronica enterprise (alternativa) | Placeholder |
+| **Resend** | Emails transaccionales (reemplazo de SendGrid) | Funcional (requiere API key) |
+| **Google Calendar** | Agendamiento de entrevistas + Meet links | Funcional (requiere OAuth) |
 | **OpenAI** | Fallback para analisis IA | Placeholder |
 | **AWS S3** | Almacenamiento de archivos | Placeholder (usa storage local en dev) |
 
@@ -488,8 +555,9 @@ Variables opcionales por integracion:
 - **LinkedIn:** `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_REDIRECT_URI`, `LINKEDIN_INTEGRATION_MODE`
 - **IA:** `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
 - **Dapta:** `DAPTA_FLOW_WEBHOOK_URL`, `DAPTA_API_KEY`, `DAPTA_WEBHOOK_SECRET`
-- **Email:** `SENDGRID_API_KEY`, `EMAIL_FROM`
-- **E-Signature:** `DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_SECRET_KEY`, `SIGNABLE_API_KEY`
+- **Email:** `RESEND_API_KEY`, `EMAIL_FROM`
+- **E-Signature:** `FIRMA_PROVIDER` (signwell|docusign|mock), `SIGNWELL_API_KEY`
+- **Google:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
 - **Unipile:** `UNIPILE_API_URL`, `UNIPILE_API_KEY`, `UNIPILE_ACCOUNT_ID`
 - **Storage:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`
 
@@ -539,24 +607,28 @@ Configurado para **Vercel** con:
 - Scoring ATS deterministico (6 dimensiones ponderadas)
 - Pipeline kanban con drag & drop
 - Entrevistas IA (Dapta) con analisis automatico
-- Entrevistas humanas con agendamiento y evaluacion
+- Entrevistas humanas con agendamiento y evaluacion + Google Calendar + Meet
 - Scoring dual (IA + Humano) configurable
 - Evaluaciones tecnicas con banco de preguntas y token publico
+- Generacion de preguntas con IA (Claude API) desde el banco de preguntas
+- Seguridad anti-trampa en evaluaciones (copy/paste, cambio de pestana, registro de eventos)
+- Reporte de integridad de evaluaciones en detalle y analytics
 - Seleccion de candidatos con portal de documentos
-- Onboarding con emails de bienvenida (inmediatos/programados)
+- Onboarding con emails de bienvenida (Resend, inmediatos/programados)
 - Generacion de contratos (3 tipos colombianos) con versionamiento
+- Firma electronica con SignWell (produccion) + mock (desarrollo)
 - Integracion LinkedIn (OAuth, publicacion, sync)
 - Portal publico de empleo
-- 27 componentes shadcn/ui + 50 de dominio
-- 62 endpoints API REST
+- Reportes y Analytics: pipeline (funnel, tiempos, volumen, scores) + integridad de evaluaciones
+- Export CSV de reportes de integridad
+- 27 componentes shadcn/ui + 50+ de dominio
+- 65+ endpoints API REST
 
 ### Parcialmente implementado ⚠️
-- DocuSign e-signature (mock listo para produccion)
-- Google Calendar (placeholder)
+- DocuSign e-signature (placeholder para enterprise)
 - AWS S3 storage (usa `/public/uploads/` en dev)
 
 ### Pendiente 🚧
-- Reportes/analytics avanzados
 - Colaboracion en equipo (comentarios, menciones)
 - Notificaciones en tiempo real (WebSocket/SSE)
 - App movil (solo responsive web)

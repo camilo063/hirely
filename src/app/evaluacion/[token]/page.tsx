@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
 import {
   Clock, ChevronLeft, ChevronRight, CheckCircle2, XCircle,
-  AlertTriangle, FlaskConical, Loader2,
+  AlertTriangle, FlaskConical, Loader2, ShieldCheck,
 } from 'lucide-react';
 import type { PreguntaAsignada, RespuestaCandidato, EstadoEvaluacion } from '@/lib/types/evaluacion-tecnica.types';
 
@@ -51,6 +52,67 @@ export default function EvaluacionCandidatoPage() {
   const [tiempoRestante, setTiempoRestante] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ score: number; aprobada: boolean; mostrar_resultados: boolean } | null>(null);
+  const [salidas, setSalidas] = useState(0);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const MAX_SALIDAS_ADVERTENCIA = 3;
+
+  // Security event registration (fire-and-forget)
+  function registrarEventoSeguridad(tipo: 'cambio_pestana' | 'intento_copia') {
+    fetch(`/api/evaluacion/${token}/seguridad`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo, timestamp: new Date().toISOString() }),
+    }).catch(() => {}); // silent
+  }
+
+  // Anti-cheating: block copy/paste/select-all + right-click
+  useEffect(() => {
+    if (view !== 'test') return;
+
+    const bloquearCopy = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'x' || e.key === 'a')) {
+        e.preventDefault();
+        toast.info('La copia de texto no esta permitida en esta evaluacion');
+        registrarEventoSeguridad('intento_copia');
+      }
+    };
+    const bloquearContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      toast.info('El menu contextual esta deshabilitado durante la evaluacion');
+      registrarEventoSeguridad('intento_copia');
+    };
+
+    document.addEventListener('keydown', bloquearCopy);
+    document.addEventListener('contextmenu', bloquearContextMenu);
+
+    return () => {
+      document.removeEventListener('keydown', bloquearCopy);
+      document.removeEventListener('contextmenu', bloquearContextMenu);
+    };
+  }, [view, token]);
+
+  // Anti-cheating: tab visibility change detection
+  useEffect(() => {
+    if (view !== 'test') return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setSalidas(prev => {
+          const nuevas = prev + 1;
+          registrarEventoSeguridad('cambio_pestana');
+          if (nuevas === 1) {
+            toast.info('Hemos detectado que saliste de la evaluacion. Por favor mantente en esta pestana.');
+          } else if (nuevas >= MAX_SALIDAS_ADVERTENCIA) {
+            setShowWarningModal(true);
+          }
+          return nuevas;
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [view, token]);
 
   useEffect(() => {
     fetchEvaluacion();
@@ -277,7 +339,15 @@ export default function EvaluacionCandidatoPage() {
             <div className="text-xs text-muted-foreground space-y-1">
               <p>- El tiempo comienza al hacer clic en &quot;Comenzar&quot;</p>
               <p>- Puedes navegar entre preguntas libremente</p>
-              <p>- Al terminar el tiempo, las respuestas se envían automáticamente</p>
+              <p>- Al terminar el tiempo, las respuestas se envian automaticamente</p>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-semibold">Evaluacion protegida</p>
+                <p>Esta evaluacion registra cambios de pestana y bloquea la copia de texto para garantizar la integridad del proceso.</p>
+              </div>
             </div>
 
             <Button
@@ -327,11 +397,34 @@ export default function EvaluacionCandidatoPage() {
     const respondidas = preguntas.filter(p => respuestas.has(p.pregunta_id)).length;
 
     return (
-      <div className="min-h-screen bg-[#F5F7FA]">
+      <div className="min-h-screen bg-[#F5F7FA] select-none">
+        {/* Warning modal for excessive tab switches */}
+        {showWarningModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-xl p-6 max-w-md mx-4 shadow-xl">
+              <div className="flex items-center gap-3 mb-3">
+                <AlertTriangle className="h-8 w-8 text-red-500" />
+                <h3 className="text-lg font-bold text-red-700">Advertencia de Integridad</h3>
+              </div>
+              <p className="text-sm text-gray-700 mb-4">
+                Has abandonado la evaluacion <strong>{salidas} veces</strong>. Esta actividad quedara registrada en tu evaluacion y sera visible para el reclutador.
+              </p>
+              <Button onClick={() => setShowWarningModal(false)} className="w-full bg-red-600 hover:bg-red-700">
+                Entendido, continuare en esta pestana
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Top bar */}
         <div className="sticky top-0 z-50 bg-white border-b shadow-sm">
           <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-            <span className="text-sm font-medium text-navy">{data.evaluacion.titulo}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-navy">{data.evaluacion.titulo}</span>
+              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-gray-100 px-2 py-0.5 rounded-full" title="Esta evaluacion registra cambios de pestana y bloquea la copia de texto para garantizar la integridad del proceso.">
+                <ShieldCheck className="h-3 w-3" /> Evaluacion protegida
+              </span>
+            </div>
             <div className="flex items-center gap-4">
               <span className="text-sm text-muted-foreground">
                 {respondidas}/{preguntas.length} respondidas

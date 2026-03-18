@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { TableSkeleton } from '@/components/shared/loading-skeleton';
 import { toast } from 'sonner';
 import {
-  CheckCircle2, XCircle, Clock, Send, User, Briefcase, BarChart3,
+  CheckCircle2, XCircle, Clock, Send, User, Briefcase, BarChart3, ShieldCheck, AlertTriangle,
 } from 'lucide-react';
 import type { Evaluacion, ScoreDetalle, PreguntaAsignada, RespuestaCandidato } from '@/lib/types/evaluacion-tecnica.types';
 
@@ -165,6 +165,54 @@ export default function EvaluacionDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Security report */}
+      {evaluacion.estado === 'completada' && (() => {
+        const rawEventos = evaluacion.eventos_seguridad;
+        const eventos: Array<{ tipo: string }> = typeof rawEventos === 'string'
+          ? JSON.parse(rawEventos)
+          : (rawEventos || []);
+        const cambiosPestana = eventos.filter(e => e.tipo === 'cambio_pestana').length;
+        const intentosCopia = eventos.filter(e => e.tipo === 'intento_copia').length;
+        const hayIncidentes = cambiosPestana > 0 || intentosCopia > 0;
+
+        return (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4" /> Reporte de Integridad
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span>Cambios de pestana</span>
+                  <span className={cambiosPestana >= 3 ? 'text-red-600 font-medium' : ''}>{cambiosPestana} veces</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span>Intentos de copia</span>
+                  <span className={intentosCopia > 0 ? 'text-orange-600 font-medium' : ''}>{intentosCopia} veces</span>
+                </div>
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+                  {cambiosPestana >= 3 ? (
+                    <Badge className="bg-red-100 text-red-700 gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Actividad sospechosa
+                    </Badge>
+                  ) : hayIncidentes ? (
+                    <Badge className="bg-yellow-100 text-yellow-700 gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Actividad moderada
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-green-100 text-green-700 gap-1">
+                      <CheckCircle2 className="h-3 w-3" /> Sin incidentes
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Questions and answers */}
       <Card>
