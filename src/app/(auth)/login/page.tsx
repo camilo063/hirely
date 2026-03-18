@@ -32,8 +32,7 @@ export default function LoginPage() {
         toast.error('Credenciales invalidas. Verifica tu email y contrasena.');
       } else if (result?.ok) {
         toast.success('Bienvenido!');
-        router.push('/dashboard');
-        router.refresh();
+        window.location.href = '/dashboard';
       }
     } catch {
       toast.error('Error al iniciar sesion. Intenta de nuevo.');
