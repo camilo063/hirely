@@ -1,0 +1,11 @@
+export { default as HeroSection } from './HeroSection';
+export { default as ProblemSection } from './ProblemSection';
+export { default as HowItWorksSection } from './HowItWorksSection';
+export { default as ModulesSection } from './ModulesSection';
+export { default as ScoringSection } from './ScoringSection';
+export { default as IntegrationsSection } from './IntegrationsSection';
+export { default as PublicPortalsSection } from './PublicPortalsSection';
+export { default as TestimonialsSection } from './TestimonialsSection';
+export { default as CtaSection } from './CtaSection';
+export { default as Navbar } from './Navbar';
+export { default as FooterSection } from './FooterSection';
