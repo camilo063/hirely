@@ -7,14 +7,16 @@ Plataforma SaaS multi-tenant de reclutamiento y seleccion de personal, construid
 | Capa | Tecnologia |
 |------|-----------|
 | Frontend | Next.js 14 (App Router) + TypeScript + Tailwind CSS |
-| UI | shadcn/ui (27 componentes base + 50 componentes de dominio) |
+| UI | shadcn/ui (27 componentes base + 72 componentes de dominio) |
 | Auth | NextAuth.js v5 (Credentials + JWT) |
 | Base de datos | PostgreSQL 16 (Docker) |
 | Validacion | Zod 4.3 |
 | Estado | Zustand 5.0 |
 | IA | Claude API (CV parsing, analisis de entrevistas, generacion de preguntas, scoring de respuestas abiertas) |
 | Charts | Recharts 3.7 |
-| Integraciones | LinkedIn OAuth, Dapta (voz IA), SignWell/DocuSign, Resend, Unipile, Google Calendar |
+| Email | Resend (emails transaccionales) |
+| Firma electronica | SignWell (produccion) / mock (desarrollo) |
+| Integraciones | LinkedIn OAuth, Dapta (voz IA), Google Calendar + Meet |
 
 ## Inicio Rapido
 
@@ -75,15 +77,15 @@ src/
 │   │   └── vacantes/        # Vacantes y pipeline
 │   ├── (public)/            # Portal publico de empleo
 │   │   └── empleo/[slug]/   # Pagina publica de vacante + aplicacion
-│   ├── api/                 # 65+ rutas API REST
+│   ├── api/                 # 83 rutas API REST
 │   ├── auth/                # Flujos OAuth LinkedIn
 │   ├── evaluacion/[token]/  # Formulario publico de evaluacion tecnica
 │   └── portal/              # Portal publico de documentos
-├── components/              # 77 componentes React
+├── components/              # 99 componentes React
 │   ├── candidatos/          # Score badge, CV view, kanban, pipeline
 │   ├── contratos/           # Editor, preview, firma, plantillas, versiones
 │   ├── entrevistas/         # Trigger IA, evaluacion humana, scoring
-│   ├── evaluaciones/        # Banco preguntas, plantillas, formularios
+│   ├── evaluaciones/        # Banco preguntas, plantillas, formularios, anti-cheating, proctoring
 │   ├── layout/              # Sidebar, header, breadcrumbs, mobile-nav
 │   ├── onboarding/          # Contratar, plantilla email, docs
 │   ├── portal/              # Aplicacion publica, documentos
@@ -91,22 +93,22 @@ src/
 │   ├── shared/              # Data table, empty state, confirm dialog, loading
 │   ├── ui/                  # 27 shadcn/ui components
 │   └── vacantes/            # Card, form, status selector, LinkedIn publisher
-├── hooks/                   # 6 custom hooks (useDebounce, useCandidatos, useVacantes, useLinkedin, useToast, useReportes)
+├── hooks/                   # 8 custom hooks (useDebounce, useCandidatos, useVacantes, useLinkedin, useToast, useReportes, useReveal, useTiposContrato)
 ├── lib/
 │   ├── auth/                # NextAuth config + API middleware helpers
-│   ├── db/                  # Pool de conexion + 19 migraciones SQL
-│   │   ├── migrations/      # 001-019 migraciones
+│   ├── db/                  # Pool de conexion + 20 migraciones SQL
+│   │   ├── migrations/      # 001-020 migraciones
 │   │   └── seeds/           # Preguntas iniciales de evaluacion
-│   ├── integrations/        # 10 clientes externos (Anthropic, Dapta, LinkedIn, DocuSign, SendGrid, etc.)
-│   ├── services/            # 24 servicios de logica de negocio
-│   ├── types/               # 11 archivos de tipos TypeScript
-│   ├── utils/               # 11 utilidades (API response, errors, constants, design tokens, email templates, etc.)
+│   ├── integrations/        # Clientes externos (Anthropic, Dapta, LinkedIn, Resend, SignWell, Google Calendar)
+│   ├── services/            # 27 servicios de logica de negocio
+│   ├── types/               # 12 archivos de tipos TypeScript
+│   ├── utils/               # 12 utilidades (API response, errors, constants, design tokens, email templates, etc.)
 │   ├── validations/         # 6 schemas Zod
 │   └── tests/               # Tests de integracion
 └── middleware.ts            # Edge middleware (proteccion de rutas)
 ```
 
-**Totales:** 265+ archivos TypeScript/TSX, 80+ componentes, 65+ endpoints API, 25+ servicios, 19 migraciones
+**Totales:** 314 archivos TypeScript/TSX, 99 componentes, 83 endpoints API, 27 servicios, 20 migraciones
 
 ---
 
@@ -137,13 +139,12 @@ src/
 - Pipeline visual dual: vista tabla + kanban con drag & drop (dnd-kit)
 - Integracion LinkedIn OAuth: publicar vacantes, sincronizar aplicantes automaticamente
 - 3 modos de publicacion LinkedIn: deeplink, API directa, Unipile
-- State machine de vacante: `borrador → publicada → pausada → cerrada → archivada`
+- State machine de vacante: `borrador -> publicada -> pausada -> cerrada -> archivada`
 - Selector de estado inteligente con acciones LinkedIn automaticas por transicion
 - Pagina publica `/empleo/[slug]` para que candidatos apliquen
 - Pagina de agradecimiento post-aplicacion
 - Criterios de evaluacion ponderados por vacante
 - Portal publico con conteo de vistas y aplicaciones
-- Webhooks: Unipile + LinkedIn para recibir datos de candidatos
 
 **Servicios:** vacantes, linkedin, linkedin-publish, linkedin-sync, public-apply, portal-vacantes, vacancy-state-machine
 
@@ -183,9 +184,11 @@ src/
 **API Routes:**
 - `GET/POST /api/candidatos` — listar y crear
 - `GET/DELETE /api/candidatos/[id]` — detalle y eliminar
+- `GET /api/candidatos/[id]/aplicaciones` — aplicaciones de un candidato
 - `POST /api/candidatos/[id]/parse-cv` — parsear CV con Claude
 - `POST /api/candidatos/[id]/score` — calcular score ATS
 - `POST/GET /api/candidatos/[id]/documentos` — subida de CVs/documentos
+- `PATCH /api/aplicaciones/[id]/estado` — cambio de estado con state machine
 
 ---
 
@@ -217,10 +220,11 @@ src/
 
 - CRUD de entrevistas humanas con agendamiento (fecha, hora, duracion)
 - Panel de agendamiento: ubicacion, enlace virtual (Zoom/Meet/Teams)
+- Integracion Google Calendar: crea evento automaticamente con enlace Meet
 - Envio de invitaciones por email al candidato con datos de la entrevista
 - Formulario de evaluacion: notas del entrevistador, score por competencia (1-10), recomendacion final
 - Detalle con informacion del entrevistador y candidato
-- Estados: `agendada → completada / no_show / cancelada`
+- Estados: `agendada -> completada / no_show / cancelada`
 
 **Servicios:** entrevista-humana, calendario, email
 
@@ -246,6 +250,7 @@ src/
   - Tipos de pregunta: opcion multiple, verdadero/falso, respuesta abierta, codigo
   - Plantillas de evaluacion reutilizables con duracion y puntaje aprobatorio
   - Envio de evaluacion al candidato via token unico con expiracion (72h)
+  - Envio masivo de evaluaciones a multiples candidatos
   - Formulario publico `/evaluacion/[token]` para que el candidato responda
   - Scoring automatico (opcion multiple/V-F exacto, respuesta abierta/codigo via Claude AI)
   - Importacion masiva de preguntas
@@ -261,8 +266,8 @@ src/
   - Bloqueo de clic derecho (menu contextual)
   - Bloqueo de seleccion de texto (`select-none`)
   - Deteccion de cambio de pestana/foco con contador
-  - Advertencia progresiva: toast informativo (1ra salida) → modal de advertencia (3+ salidas)
-  - Badge "Evaluacion protegida · Actividad monitoreada" con tooltip
+  - Advertencia progresiva: toast informativo (1ra salida) -> modal de advertencia (3+ salidas)
+  - Badge "Evaluacion protegida - Actividad monitoreada" con tooltip
   - Registro silencioso de eventos en BD (`eventos_seguridad` JSONB)
   - Medidas disuasivas, no bloqueantes — solo registra y advierte
 - **Reporte de Integridad** (vista admin):
@@ -278,6 +283,7 @@ src/
 - `GET/POST /api/evaluaciones` — listar y crear evaluaciones
 - `GET/PATCH /api/evaluaciones/[id]` — detalle y actualizar
 - `POST /api/evaluaciones/[id]/enviar` — enviar al candidato
+- `POST /api/evaluaciones/envio-masivo` — envio masivo de evaluaciones a multiples candidatos
 - `GET/POST/DELETE /api/evaluaciones/banco-preguntas` — banco de preguntas CRUD
 - `GET/POST/DELETE /api/evaluaciones/banco-preguntas/[id]` — pregunta individual
 - `GET /api/evaluaciones/banco-preguntas/categorias` — categorias disponibles
@@ -319,7 +325,7 @@ src/
 
 **Paginas:** `/onboarding`, `/configuracion` (tab Onboarding)
 
-- Boton "Contratar" desde el pipeline: transiciona candidato de `seleccionado → contratado`
+- Boton "Contratar" desde el pipeline: transiciona candidato de `seleccionado -> contratado`
 - Email de bienvenida con plantilla HTML personalizable y 11 variables dinamicas:
   - `{{nombre_empleado}}`, `{{cargo}}`, `{{fecha_inicio}}`, `{{empresa}}`, `{{lider_nombre}}`, etc.
 - Envio inmediato o programado para la fecha de inicio laboral
@@ -330,6 +336,7 @@ src/
   - Boton "Procesar programados" manual
 - Configuracion:
   - Editor de plantilla HTML con panel de variables y vista previa
+  - Plantillas de email editables para seleccion, rechazo y onboarding
   - Documentos adjuntos de onboarding (archivos o links)
 - Panel de estado en el detalle del candidato contratado
 - Selector de lider directo al contratar
@@ -344,6 +351,7 @@ src/
 - `GET/PUT /api/configuracion/onboarding` — configuracion de plantilla
 - `GET/POST /api/configuracion/onboarding/documentos` — docs adjuntos
 - `DELETE /api/configuracion/onboarding/documentos/[id]` — eliminar doc
+- `GET/PATCH /api/configuracion/emails` — plantillas de email editables (seleccion, rechazo, onboarding)
 
 ---
 
@@ -370,23 +378,24 @@ src/
   - Cada cambio crea una nueva version automaticamente
   - Historial de versiones con autor, fecha y nota de cambio
   - Restaurar versiones anteriores
-- State machine: `borrador → generado → enviado → firmado / rechazado`
+- State machine: `borrador -> generado -> enviado -> firmado / rechazado`
 - Acciones de documento:
   - Imprimir (abre dialogo de impresion del navegador)
   - Descargar como HTML
   - Marcar como generado
-  - Enviar para firma electronica (DocuSign mock)
+  - Enviar para firma electronica (SignWell en produccion, mock en desarrollo)
 - Dashboard de contratos:
   - Cards de resumen: borradores, generados, en firma, firmados
   - Tabla filtrable por estado, tipo y busqueda
-- Gestion de plantillas personalizadas desde Configuracion → Contratos:
+- Gestion de plantillas personalizadas desde Configuracion -> Contratos:
   - CRUD completo de plantillas
   - Panel de variables disponibles por tipo
   - Vista previa con datos de ejemplo
+- Tipos de contrato configurables (CRUD admin)
 - Integracion en pipeline: tab "Contrato" para candidatos contratados
-- Firma electronica: integracion DocuSign (mock preparado para produccion)
+- Firma electronica: integracion SignWell (produccion) con mock para desarrollo
 
-**Servicios:** contratos, firma-electronica
+**Servicios:** contratos, firma-electronica, tipos-contrato
 
 **API Routes:**
 - `GET/POST /api/contratos` — listar (con filtros) y crear
@@ -397,6 +406,8 @@ src/
 - `GET /api/contratos/auto-poblar` — auto-poblar datos del candidato
 - `GET/POST /api/plantillas-contrato` — listar y crear plantillas
 - `GET/PUT/DELETE /api/plantillas-contrato/[id]` — CRUD plantilla
+- `GET/POST /api/tipos-contrato` — listar y crear tipos de contrato
+- `GET/PUT/DELETE /api/tipos-contrato/[id]` — CRUD tipo de contrato
 
 ---
 
@@ -439,41 +450,43 @@ src/
 ## Maquinas de Estado
 
 ```
-VACANTE:     borrador → publicada → pausada → cerrada → archivada
+VACANTE:     borrador -> publicada -> pausada -> cerrada -> archivada
 
-APLICACION:  nuevo → revisado → preseleccionado → entrevista_ia →
-             entrevista_humana → evaluado → seleccionado → contratado
-             (cualquier estado → descartado)
+APLICACION:  nuevo -> revisado -> preseleccionado -> entrevista_ia ->
+             entrevista_humana -> evaluado -> seleccionado ->
+             documentos_pendientes -> documentos_completos -> contratado
+             (cualquier estado -> descartado)
 
-ENTREVISTA IA:     pendiente → en_progreso → completada / cancelada
-ENTREVISTA HUMANA: agendada → completada / no_show / cancelada
+ENTREVISTA IA:     pendiente -> en_progreso -> completada / cancelada
+ENTREVISTA HUMANA: agendada -> completada / no_show / cancelada
 
-CONTRATO:    borrador → generado → enviado → firmado / rechazado
+CONTRATO:    borrador -> generado -> enviado -> firmado / rechazado
 
-ONBOARDING EMAIL:  pendiente → programado → enviado / error
+ONBOARDING EMAIL:  pendiente -> programado -> enviado / error
 
-EVALUACION TECNICA: pendiente → enviada → en_progreso → completada / expirada / cancelada
+EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada / cancelada
 ```
 
 ## Flujo Completo de Contratacion
 
 ```
-1. Crear vacante → Publicar en LinkedIn / Portal publico
-2. Recibir candidatos → Parsear CV (Claude AI) → Score ATS
-3. Evaluacion tecnica (token publico) → Score Tecnico
-4. Entrevista IA (Dapta) → Transcripcion → Analisis → Score IA
-5. Agendar entrevista humana → Evaluacion → Score Humano
-6. Scoring Dual (ATS + Tecnico + IA + Humano) → Ranking final
-7. Seleccionar candidato → Solicitar documentos (portal)
-8. Contratar → Enviar email de bienvenida → Onboarding
-9. Generar contrato → Firma electronica
+ 1. Crear vacante -> Publicar en LinkedIn / Portal publico
+ 2. Recibir candidatos -> Parsear CV (Claude AI) -> Score ATS
+ 3. Evaluacion tecnica (token publico) -> Score Tecnico
+ 4. Entrevista IA (Dapta) -> Transcripcion -> Analisis -> Score IA
+ 5. Agendar entrevista humana (Google Calendar + Meet) -> Evaluacion -> Score Humano
+ 6. Scoring Dual (ATS + Tecnico + IA + Humano) -> Ranking final
+ 7. Seleccionar candidato
+ 8. Solicitar documentos (portal publico con token) -> Verificar completitud
+ 9. Generar contrato -> Firma electronica (SignWell)
+10. Contratar -> Enviar email de bienvenida (Resend) -> Onboarding
 ```
 
 ---
 
 ## Base de Datos
 
-### Migraciones (19)
+### Migraciones (20)
 
 | # | Archivo | Descripcion |
 |---|---------|-------------|
@@ -496,6 +509,7 @@ EVALUACION TECNICA: pendiente → enviada → en_progreso → completada / expir
 | 017 | `tipos_contrato.sql` | Tabla tipos_contrato con 3 tipos colombianos |
 | 018 | `evaluaciones_seguridad.sql` | Columna eventos_seguridad JSONB en evaluaciones + indice GIN |
 | 019 | `analytics_integridad.sql` | Vistas SQL: v_integridad_evaluaciones, v_kpis_integridad, v_distribucion_incidentes |
+| 020 | `email_firma_admin.sql` | Email admin configurable para firma + plantillas email editables en org_settings |
 
 ### Tablas Principales
 
@@ -511,7 +525,7 @@ EVALUACION TECNICA: pendiente → enviada → en_progreso → completada / expir
 - **plantillas_contrato** — plantillas HTML por tipo de contrato
 - **onboarding** — registros de onboarding con tracking de email
 - **documentos_onboarding** — documentos requeridos por organizacion
-- **org_settings** — configuracion por organizacion (email, scoring, portal, onboarding)
+- **org_settings** — configuracion por organizacion (email, scoring, portal, onboarding, plantillas email)
 - **linkedin_tokens** — tokens OAuth LinkedIn
 - **linkedin_job_syncs** — tracking de sincronizacion
 - **preguntas_banco** — banco de preguntas tecnicas (categoria, tipo, puntos)
@@ -528,16 +542,13 @@ EVALUACION TECNICA: pendiente → enviada → en_progreso → completada / expir
 
 | Servicio | Uso | Estado |
 |----------|-----|--------|
-| **Claude API (Anthropic)** | CV parsing, analisis de entrevistas, generacion de preguntas, scoring de respuestas abiertas | Funcional |
-| **LinkedIn OAuth** | Login candidato, publicar vacantes, sync aplicantes | Funcional |
-| **Dapta** | Entrevistas telefonicas con agente de voz IA | Funcional (requiere API key) |
-| **Unipile** | Automatizacion LinkedIn, job posting, applicant sync | Funcional (requiere cuenta) |
-| **SignWell** | Firma electronica de contratos (produccion) | Funcional (requiere API key) |
-| **DocuSign** | Firma electronica enterprise (alternativa) | Placeholder |
-| **Resend** | Emails transaccionales (reemplazo de SendGrid) | Funcional (requiere API key) |
-| **Google Calendar** | Agendamiento de entrevistas + Meet links | Funcional (requiere OAuth) |
-| **OpenAI** | Fallback para analisis IA | Placeholder |
-| **AWS S3** | Almacenamiento de archivos | Placeholder (usa storage local en dev) |
+| **Claude AI (Anthropic)** | CV parsing, analisis de entrevistas, generacion de preguntas, scoring de respuestas abiertas | Funcional |
+| **Dapta** | Entrevistas telefonicas con agente de voz IA + webhook | Funcional |
+| **Resend** | Emails transaccionales (invitaciones, seleccion, rechazo, onboarding) | Funcional |
+| **SignWell** | Firma electronica de contratos + webhook | Funcional |
+| **Google Calendar** | Agendamiento de entrevistas + Meet links | Funcional |
+| **LinkedIn** | OAuth, publicar vacantes, sync aplicantes | Requiere API key |
+| **AWS S3** | Almacenamiento de archivos | Placeholder (usa local en dev) |
 
 ---
 
@@ -552,14 +563,15 @@ NEXTAUTH_SECRET=your-secret-here
 ```
 
 Variables opcionales por integracion:
+
 - **LinkedIn:** `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_REDIRECT_URI`, `LINKEDIN_INTEGRATION_MODE`
-- **IA:** `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
-- **Dapta:** `DAPTA_FLOW_WEBHOOK_URL`, `DAPTA_API_KEY`, `DAPTA_WEBHOOK_SECRET`
-- **Email:** `RESEND_API_KEY`, `EMAIL_FROM`
-- **E-Signature:** `FIRMA_PROVIDER` (signwell|docusign|mock), `SIGNWELL_API_KEY`
+- **IA:** `ANTHROPIC_API_KEY`
+- **Dapta:** `DAPTA_FLOW_WEBHOOK_URL`, `DAPTA_API_KEY`, `DAPTA_WEBHOOK_SECRET`, `DAPTA_FROM_NUMBER`
+- **Email:** `RESEND_API_KEY`, `RESEND_FROM_EMAIL`
+- **Firma electronica:** `FIRMA_PROVIDER` (signwell|mock), `SIGNWELL_API_KEY`, `SIGNWELL_API_URL`
 - **Google:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
-- **Unipile:** `UNIPILE_API_URL`, `UNIPILE_API_KEY`, `UNIPILE_ACCOUNT_ID`
-- **Storage:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`
+- **Storage:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `AWS_REGION`
+- **App:** `APP_URL` (para webhooks de firma)
 
 ## Docker
 
@@ -589,6 +601,20 @@ npm run db:migrate  # Ejecutar migraciones
 npm run db:seed     # Seed de datos
 ```
 
+## Changelog
+
+### 2026-03-19 — Fixes S1-S7
+
+- **S1:** Correccion de validaciones Zod en esquema de vacantes y rutas API asociadas
+- **S2:** Mejoras de layout y UX en editor de plantillas de contrato
+- **S3:** Tipos de contrato configurables (CRUD admin) + migracion 017
+- **S4:** Seguridad anti-trampa en evaluaciones tecnicas: bloqueo copy/paste, deteccion cambio de pestana, registro de eventos en BD, advertencias progresivas, indicador de proctoring
+- **S5:** Generacion de preguntas con IA (Claude API) desde el banco de preguntas con preview, edicion inline y guardado selectivo
+- **S6:** Reporte de integridad de evaluaciones: analytics con KPIs, distribucion de incidentes, correlacion riesgo-score, export CSV, vistas SQL
+- **S7:** Email admin configurable para firma digital + plantillas de email editables (seleccion, rechazo, onboarding) en configuracion de organizacion. Migracion 020
+
+---
+
 ## Deploy
 
 Configurado para **Vercel** con:
@@ -599,36 +625,41 @@ Configurado para **Vercel** con:
 
 ## Estado del MVP
 
-### Implementado ✅
+### Implementado
 - Autenticacion multi-tenant con JWT
 - Dashboard con metricas y actividad reciente
 - CRUD completo de vacantes con state machine
 - Banco de talento con CV parsing (Claude AI)
 - Scoring ATS deterministico (6 dimensiones ponderadas)
 - Pipeline kanban con drag & drop
+- State machine de aplicaciones con estados de documentos (documentos_pendientes, documentos_completos)
 - Entrevistas IA (Dapta) con analisis automatico
 - Entrevistas humanas con agendamiento y evaluacion + Google Calendar + Meet
 - Scoring dual (IA + Humano) configurable
 - Evaluaciones tecnicas con banco de preguntas y token publico
+- Envio masivo de evaluaciones tecnicas
 - Generacion de preguntas con IA (Claude API) desde el banco de preguntas
 - Seguridad anti-trampa en evaluaciones (copy/paste, cambio de pestana, registro de eventos)
-- Reporte de integridad de evaluaciones en detalle y analytics
+- Reporte de integridad de evaluaciones en detalle y analytics con export CSV
 - Seleccion de candidatos con portal de documentos
 - Onboarding con emails de bienvenida (Resend, inmediatos/programados)
+- Plantillas de email editables (seleccion, rechazo, onboarding) desde configuracion
 - Generacion de contratos (3 tipos colombianos) con versionamiento
+- Tipos de contrato configurables (CRUD admin)
 - Firma electronica con SignWell (produccion) + mock (desarrollo)
+- Email admin configurable para firma digital
 - Integracion LinkedIn (OAuth, publicacion, sync)
 - Portal publico de empleo
 - Reportes y Analytics: pipeline (funnel, tiempos, volumen, scores) + integridad de evaluaciones
-- Export CSV de reportes de integridad
-- 27 componentes shadcn/ui + 50+ de dominio
-- 65+ endpoints API REST
+- 27 componentes shadcn/ui + 72 de dominio
+- 83 endpoints API REST
+- 27 servicios de logica de negocio
+- 20 migraciones SQL
 
-### Parcialmente implementado ⚠️
-- DocuSign e-signature (placeholder para enterprise)
+### Parcialmente implementado
 - AWS S3 storage (usa `/public/uploads/` en dev)
 
-### Pendiente 🚧
+### Pendiente
 - Colaboracion en equipo (comentarios, menciones)
 - Notificaciones en tiempo real (WebSocket/SSE)
 - App movil (solo responsive web)

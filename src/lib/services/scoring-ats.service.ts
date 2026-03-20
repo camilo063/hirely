@@ -534,6 +534,14 @@ export async function updateAplicacionScore(
     WHERE aplicaciones.id = $1 AND aplicaciones.vacante_id = v.id AND v.organization_id = $2`,
     [aplicacionId, orgId, scoreAts]
   );
+
+  // Recalculate score_final with all available components
+  try {
+    const { recalcularScoreFinal } = await import('./scoring-dual.service');
+    await recalcularScoreFinal(aplicacionId);
+  } catch (err) {
+    console.error('[Scoring ATS] Error recalculando score_final:', err);
+  }
 }
 
 export async function batchScoreVacante(orgId: UUID, vacanteId: UUID): Promise<number> {

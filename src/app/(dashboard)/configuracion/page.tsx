@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Building, Sliders, Link2, Save, FileCheck, UserCheck, FileSignature } from 'lucide-react';
+import { Building, Sliders, Link2, Save, FileCheck, UserCheck, FileSignature, Mail } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ import { PlantillaEditor } from '@/components/onboarding/plantilla-editor';
 import { DocumentosOnboardingConfig } from '@/components/onboarding/documentos-onboarding-config';
 import { PlantillaContratoEditor } from '@/components/contratos/plantilla-contrato-editor';
 import { TiposContratoConfig } from '@/components/configuracion/tipos-contrato-config';
+import { EmailTemplatesConfig } from '@/components/configuracion/email-templates-config';
 import { toast } from 'sonner';
 
 export default function ConfiguracionPageWrapper() {
@@ -78,6 +79,9 @@ function ConfiguracionPage() {
           </TabsTrigger>
           <TabsTrigger value="contratos">
             <FileSignature className="h-4 w-4 mr-1" /> Contratos
+          </TabsTrigger>
+          <TabsTrigger value="emails">
+            <Mail className="h-4 w-4 mr-1" /> Emails
           </TabsTrigger>
           <TabsTrigger value="integraciones">
             <Link2 className="h-4 w-4 mr-1" /> Integraciones
@@ -215,6 +219,10 @@ function ConfiguracionPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="emails">
+          <EmailTemplatesConfig />
         </TabsContent>
 
         <TabsContent value="integraciones">

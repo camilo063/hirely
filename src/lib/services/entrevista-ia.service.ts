@@ -8,6 +8,17 @@ import { UUID } from '@/lib/types/common.types';
 import { NotFoundError } from '@/lib/utils/errors';
 
 /**
+ * Get admin email addresses for an organization.
+ */
+async function getAdminEmails(orgId: string): Promise<string[]> {
+  const result = await pool.query(
+    `SELECT email FROM users WHERE organization_id = $1 AND role IN ('admin') AND is_active = true`,
+    [orgId]
+  );
+  return result.rows.map((r: { email: string }) => r.email);
+}
+
+/**
  * Servicio para gestionar entrevistas IA con Dapta.
  *
  * Flow:
@@ -240,6 +251,14 @@ export async function procesarResultadoLlamada(
       [scoreTotal, analisis.recomendacion, entrevista.aplicacion_id, String(scoreTotal)]
     );
 
+    // Recalculate score_final with all available components
+    try {
+      const { recalcularScoreFinal } = await import('./scoring-dual.service');
+      await recalcularScoreFinal(entrevista.aplicacion_id);
+    } catch (err) {
+      console.error('[Entrevista IA] Error recalculando score_final:', err);
+    }
+
     await pool.query(
       `INSERT INTO activity_log (organization_id, entity_type, entity_id, action, details)
        VALUES ($1, 'entrevista_ia', $2, 'completed', $3)`,
@@ -249,6 +268,45 @@ export async function procesarResultadoLlamada(
         duracion_segundos: payload.duration_seconds,
       })]
     );
+
+    // Notify admin(s) about completed AI interview
+    try {
+      const adminEmails = await getAdminEmails(entrevista.organization_id);
+      if (adminEmails.length > 0) {
+        const { enviarEmail } = await import('./email.service');
+        const { emailNotificacionDapta } = await import('@/lib/utils/email-templates');
+
+        // Get candidate name for the notification
+        const candResult = await pool.query(
+          `SELECT c.nombre FROM candidatos c
+           JOIN aplicaciones a ON a.candidato_id = c.id
+           WHERE a.id = $1`,
+          [entrevista.aplicacion_id]
+        );
+        const candidatoNombre = candResult.rows[0]?.nombre || 'Candidato';
+
+        const baseUrl = getAppUrl();
+        const dashboardUrl = `${baseUrl}/evaluaciones/entrevistas-ia`;
+
+        const { subject, htmlBody } = emailNotificacionDapta({
+          candidatoNombre,
+          vacanteTitulo: entrevista.vacante_titulo,
+          scoreIA: scoreTotal,
+          recomendacion: analisis.recomendacion,
+          duracionSegundos: payload.duration_seconds,
+          dashboardUrl,
+        });
+
+        await enviarEmail({
+          to: adminEmails,
+          subject,
+          html: htmlBody,
+          tags: { type: 'notificacion_dapta', entrevista_id: entrevista.id },
+        });
+      }
+    } catch (emailError) {
+      console.error(`[Entrevista IA] Error enviando notificación email para ${entrevista.id}:`, emailError);
+    }
 
   } catch (error) {
     console.error(`[Entrevista IA] Error analizando transcripción ${entrevista.id}:`, error);

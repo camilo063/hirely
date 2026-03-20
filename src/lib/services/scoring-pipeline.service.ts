@@ -119,6 +119,20 @@ export async function runScoringPipeline(
     ]
   );
 
+  // 4b. Recalculate score_final with all available components
+  try {
+    const { recalcularScoreFinal } = await import('./scoring-dual.service');
+    const appIdResult = await pool.query(
+      `SELECT id FROM aplicaciones WHERE vacante_id = $1 AND candidato_id = $2`,
+      [vacanteId, candidatoId]
+    );
+    if (appIdResult.rows[0]) {
+      await recalcularScoreFinal(appIdResult.rows[0].id);
+    }
+  } catch (err) {
+    console.error('[Scoring Pipeline] Error recalculando score_final:', err);
+  }
+
   // 5. Log de actividad
   await pool.query(
     `INSERT INTO activity_log (organization_id, entity_type, entity_id, action, details)

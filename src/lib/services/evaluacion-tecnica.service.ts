@@ -293,6 +293,23 @@ export async function guardarRespuestas(
     [resultado.score_total, ev.id, ev.aplicacion_id]
   );
 
+  // Recalculate score_final with all available components
+  try {
+    const { recalcularScoreFinal } = await import('./scoring-dual.service');
+    await recalcularScoreFinal(ev.aplicacion_id);
+  } catch (err) {
+    console.error('[Evaluacion Tecnica] Error recalculando score_final:', err);
+  }
+
+  // Update pipeline estado to 'evaluado'
+  await pool.query(
+    `UPDATE aplicaciones SET
+       estado = 'evaluado',
+       updated_at = NOW()
+     WHERE id = $1 AND estado IN ('nuevo','en_revision','preseleccionado','entrevista_ia','entrevista_humana')`,
+    [ev.aplicacion_id]
+  );
+
   // Activity log
   await pool.query(
     `INSERT INTO activity_log (organization_id, entity_type, entity_id, action, details)
@@ -302,6 +319,54 @@ export async function guardarRespuestas(
       aprobada: resultado.aprobada,
     })]
   );
+
+  // Notify admin(s) about completed technical evaluation
+  try {
+    const adminResult = await pool.query(
+      `SELECT email FROM users WHERE organization_id = $1 AND role IN ('admin') AND is_active = true`,
+      [ev.organization_id]
+    );
+    const adminEmails = adminResult.rows.map((r: { email: string }) => r.email);
+
+    if (adminEmails.length > 0) {
+      const { enviarEmail } = await import('./email.service');
+      const { emailNotificacionEvaluacion } = await import('@/lib/utils/email-templates');
+
+      // Get candidate and vacancy info for the notification
+      const infoResult = await pool.query(
+        `SELECT c.nombre as candidato_nombre, v.titulo as vacante_titulo
+         FROM evaluaciones e
+         JOIN candidatos c ON c.id = e.candidato_id
+         JOIN vacantes v ON v.id = e.vacante_id
+         WHERE e.id = $1`,
+        [ev.id]
+      );
+      const info = infoResult.rows[0];
+
+      if (info) {
+        const baseUrl = getAppUrl();
+        const dashboardUrl = `${baseUrl}/evaluaciones`;
+
+        const { subject, htmlBody } = emailNotificacionEvaluacion({
+          candidatoNombre: info.candidato_nombre,
+          vacanteTitulo: info.vacante_titulo,
+          scoreTecnico: resultado.score_total,
+          puntajeAprobatorio: ev.puntaje_aprobatorio,
+          aprobada: resultado.aprobada,
+          dashboardUrl,
+        });
+
+        await enviarEmail({
+          to: adminEmails,
+          subject,
+          html: htmlBody,
+          tags: { type: 'notificacion_evaluacion', evaluacion_id: ev.id },
+        });
+      }
+    }
+  } catch (emailError) {
+    console.error(`[Evaluacion Tecnica] Error enviando notificación email para evaluación ${ev.id}:`, emailError);
+  }
 
   return {
     score: resultado.score_total,

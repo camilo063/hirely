@@ -38,10 +38,17 @@ export const aplicacionCreateSchema = z.object({
 
 export const aplicacionUpdateEstadoSchema = z.object({
   estado: z.enum([
-    'nuevo', 'revisado', 'preseleccionado', 'entrevista_ia',
-    'entrevista_humana', 'evaluado', 'seleccionado', 'contratado', 'descartado',
+    'nuevo', 'en_revision', 'revisado', 'preseleccionado', 'entrevista_ia',
+    'entrevista_humana', 'evaluado', 'seleccionado',
+    'documentos_pendientes', 'documentos_completos',
+    'contratado', 'contrato_terminado', 'descartado',
   ]),
   motivo_descarte: z.string().optional(),
+  motivo: z.string().optional(),
+  motivo_detalle: z.string().optional(),
+  fecha_terminacion: z.string().optional(),
+  notas: z.string().optional(),
+  forzar_auto: z.boolean().optional(),
 });
 
 export type CandidatoCreateInput = z.infer<typeof candidatoCreateSchema>;

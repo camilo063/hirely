@@ -55,6 +55,7 @@ export interface Aplicacion {
   score_final: number | null;
   notas_internas: string | null;
   motivo_descarte: string | null;
+  estados_completados: string[];
   created_at: Date;
   updated_at: Date;
 }
@@ -66,6 +67,10 @@ export interface AplicacionConCandidato extends Aplicacion {
 export interface AplicacionConVacante extends Aplicacion {
   vacante_titulo: string;
   vacante_departamento: string;
+  terminacion_motivo?: string | null;
+  terminacion_detalle?: string | null;
+  terminacion_fecha?: string | null;
+  terminacion_notas?: string | null;
 }
 
 export interface CreateCandidatoInput {

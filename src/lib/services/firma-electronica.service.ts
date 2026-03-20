@@ -56,18 +56,39 @@ export async function enviarParaFirma(
       },
     ];
 
-    // Get org admin as company signer
-    const adminResult = await pool.query(
-      `SELECT name, email FROM users WHERE organization_id = $1 AND role = 'admin' AND is_active = true LIMIT 1`,
+    // Get org admin as company signer — check configurable email first
+    const orgSettingsResult = await pool.query(
+      `SELECT email_firma_admin FROM org_settings WHERE organization_id = $1`,
       [orgId]
     );
-    if (adminResult.rows.length > 0) {
+    const configuredEmail = orgSettingsResult.rows[0]?.email_firma_admin;
+
+    if (configuredEmail) {
+      // Use configured firma admin email
+      const adminResult = await pool.query(
+        `SELECT name FROM users WHERE organization_id = $1 AND email = $2 AND is_active = true LIMIT 1`,
+        [orgId, configuredEmail]
+      );
       signatarios.push({
-        nombre: adminResult.rows[0].name,
-        email: adminResult.rows[0].email,
+        nombre: adminResult.rows[0]?.name || contrato.org_nombre,
+        email: configuredEmail,
         orden: 2,
         rol: 'empresa',
       });
+    } else {
+      // Fallback to first active admin
+      const adminResult = await pool.query(
+        `SELECT name, email FROM users WHERE organization_id = $1 AND role = 'admin' AND is_active = true LIMIT 1`,
+        [orgId]
+      );
+      if (adminResult.rows.length > 0) {
+        signatarios.push({
+          nombre: adminResult.rows[0].name,
+          email: adminResult.rows[0].email,
+          orden: 2,
+          rol: 'empresa',
+        });
+      }
     }
 
     const firmaResult = await firmaProvider.enviarParaFirma({

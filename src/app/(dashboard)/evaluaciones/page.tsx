@@ -10,16 +10,32 @@ import { TableSkeleton } from '@/components/shared/loading-skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
   BarChart3, FlaskConical, BookOpen, FileText,
-  Send, Clock, CheckCircle2, XCircle, Plus,
+  Send, Clock, CheckCircle2, XCircle, Plus, Users,
+  Loader2,
 } from 'lucide-react';
 import type { Evaluacion } from '@/lib/types/evaluacion-tecnica.types';
 
 interface Vacante {
   id: string;
   titulo: string;
+}
+
+interface Plantilla {
+  id: string;
+  nombre: string;
+  duracion_minutos: number;
+  puntaje_aprobatorio: number;
+  estado: string;
 }
 
 const ESTADO_EVAL_COLORS: Record<string, string> = {
@@ -39,6 +55,298 @@ const ESTADO_EVAL_ICONS: Record<string, typeof Clock> = {
   expirada: XCircle,
   cancelada: XCircle,
 };
+
+interface CandidatoElegible {
+  aplicacion_id: string;
+  candidato_id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+  estado: string;
+  eval_previa_estado: string | null;
+  eval_previa_score: number | null;
+  eval_previa_fecha: string | null;
+  tiene_eval_activa: boolean;
+}
+
+function EnvioMasivoDialog({
+  onSuccess,
+}: {
+  onSuccess: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [vacantesLocal, setVacantesLocal] = useState<Vacante[]>([]);
+  const [plantillas, setPlantillas] = useState<Plantilla[]>([]);
+  const [selectedVacante, setSelectedVacante] = useState('');
+  const [selectedPlantilla, setSelectedPlantilla] = useState('');
+  const [candidatos, setCandidatos] = useState<CandidatoElegible[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [loadingCandidatos, setLoadingCandidatos] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  // Fetch vacantes + plantillas when dialog opens
+  useEffect(() => {
+    if (!open) return;
+    fetch('/api/vacantes?estado=publicada&limit=100')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          const arr = data.data?.data || data.data || [];
+          setVacantesLocal(arr);
+        }
+      })
+      .catch(() => toast.error('Error cargando vacantes'));
+
+    fetch('/api/evaluaciones/plantillas')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setPlantillas((data.data || []).filter((p: Plantilla) => p.estado === 'activa'));
+        }
+      })
+      .catch(() => toast.error('Error cargando plantillas'));
+  }, [open]);
+
+  // Fetch candidatos when vacante changes
+  useEffect(() => {
+    if (!selectedVacante) {
+      setCandidatos([]);
+      setSelectedIds(new Set());
+      return;
+    }
+    setLoadingCandidatos(true);
+    fetch(`/api/evaluaciones/envio-masivo?vacante_id=${selectedVacante}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          const cands = data.data?.candidatos || [];
+          setCandidatos(cands);
+          // Pre-select those without active evaluation and without completed one
+          const preSelected = new Set<string>(
+            cands
+              .filter((c: CandidatoElegible) => !c.tiene_eval_activa && !c.eval_previa_estado)
+              .map((c: CandidatoElegible) => c.aplicacion_id)
+          );
+          setSelectedIds(preSelected);
+        }
+      })
+      .catch(() => setCandidatos([]))
+      .finally(() => setLoadingCandidatos(false));
+  }, [selectedVacante]);
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    if (!next) {
+      setSelectedVacante('');
+      setSelectedPlantilla('');
+      setCandidatos([]);
+      setSelectedIds(new Set());
+    }
+  }
+
+  function toggleCandidate(aplicacionId: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(aplicacionId)) next.delete(aplicacionId);
+      else next.add(aplicacionId);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selectedIds.size === candidatos.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(candidatos.map(c => c.aplicacion_id)));
+    }
+  }
+
+  async function handleSubmit() {
+    if (!selectedVacante || !selectedPlantilla || selectedIds.size === 0) return;
+    setSending(true);
+    try {
+      const res = await fetch('/api/evaluaciones/envio-masivo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vacante_id: selectedVacante,
+          plantilla_id: selectedPlantilla,
+          candidatos_ids: Array.from(selectedIds),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const { enviados, omitidos, errores } = data.data;
+        if (enviados > 0) {
+          toast.success(`Evaluaciones enviadas a ${enviados} candidato${enviados > 1 ? 's' : ''}`);
+        }
+        if (omitidos > 0) {
+          toast.warning(`${omitidos} omitido${omitidos > 1 ? 's' : ''} por errores`);
+        }
+        if (errores?.length > 0) {
+          console.warn('Errores en envio masivo:', errores);
+        }
+        setOpen(false);
+        onSuccess();
+      } else {
+        toast.error(data.error || 'Error en el envio masivo');
+      }
+    } catch {
+      toast.error('Error en el envio masivo');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const canSubmit = selectedVacante && selectedPlantilla && selectedIds.size > 0 && !sending;
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="gap-1.5">
+          <Users className="h-4 w-4" />
+          Envio masivo
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Envio masivo de evaluaciones</DialogTitle>
+          <DialogDescription>
+            Selecciona vacante, plantilla y los candidatos a los que deseas enviar la evaluacion.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {/* Vacante */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Vacante</label>
+            <select
+              value={selectedVacante}
+              onChange={(e) => setSelectedVacante(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+            >
+              <option value="">Seleccionar vacante...</option>
+              {vacantesLocal.map(v => (
+                <option key={v.id} value={v.id}>{v.titulo}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Plantilla */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Plantilla de evaluacion</label>
+            <select
+              value={selectedPlantilla}
+              onChange={(e) => setSelectedPlantilla(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+            >
+              <option value="">Seleccionar plantilla...</option>
+              {plantillas.map(p => (
+                <option key={p.id} value={p.id}>{p.nombre} ({p.duracion_minutos} min)</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Candidatos */}
+          {selectedVacante && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">
+                  Candidatos ({selectedIds.size} de {candidatos.length} seleccionados)
+                </label>
+                {candidatos.length > 0 && (
+                  <Button variant="ghost" size="sm" className="text-xs h-7" onClick={toggleAll}>
+                    {selectedIds.size === candidatos.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                  </Button>
+                )}
+              </div>
+
+              {loadingCandidatos ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Cargando candidatos...
+                </div>
+              ) : candidatos.length === 0 ? (
+                <div className="rounded-lg bg-soft-gray p-4 text-sm text-muted-foreground text-center">
+                  No hay candidatos elegibles para esta vacante.
+                </div>
+              ) : (
+                <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
+                  {candidatos.map((c) => {
+                    const disabled = c.tiene_eval_activa;
+                    return (
+                      <label
+                        key={c.aplicacion_id}
+                        className={`flex items-center gap-3 px-3 py-2.5 transition-colors ${
+                          disabled ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'hover:bg-soft-gray/50 cursor-pointer'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(c.aplicacion_id)}
+                          onChange={() => !disabled && toggleCandidate(c.aplicacion_id)}
+                          disabled={disabled}
+                          className="accent-teal h-4 w-4 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{c.nombre} {c.apellido || ''}</p>
+                          <p className="text-xs text-muted-foreground truncate">{c.email}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          {c.tiene_eval_activa ? (
+                            <Badge className="text-[10px] bg-blue-100 text-blue-700">
+                              En curso
+                            </Badge>
+                          ) : c.eval_previa_estado ? (
+                            <div>
+                              <Badge className={`text-[10px] ${ESTADO_EVAL_COLORS[c.eval_previa_estado] || 'bg-gray-100 text-gray-600'}`}>
+                                {c.eval_previa_estado === 'completada' ? 'Ya presento' :
+                                 c.eval_previa_estado === 'expirada' ? 'Expirada' :
+                                 c.eval_previa_estado}
+                              </Badge>
+                              {c.eval_previa_score !== null && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5">Score: {c.eval_previa_score}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-green-600 font-medium">Nueva</span>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="bg-teal hover:bg-teal/90 gap-1.5"
+          >
+            {sending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Enviando...
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" />
+                Enviar a {selectedIds.size} candidato{selectedIds.size !== 1 ? 's' : ''}
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function EvaluacionesPage() {
   const router = useRouter();
@@ -65,11 +373,12 @@ export default function EvaluacionesPage() {
 
   async function fetchVacantes() {
     try {
-      const res = await fetch('/api/vacantes');
+      const res = await fetch('/api/vacantes?estado=publicada&limit=100');
       const data = await res.json();
-      if (data.success && data.data?.length > 0) {
-        setVacantes(data.data);
-        setSelectedVacante(data.data[0].id);
+      const arr = data.data?.data || data.data || [];
+      if (data.success && arr.length > 0) {
+        setVacantes(arr);
+        setSelectedVacante(arr[0].id);
       }
     } catch {
       toast.error('Error cargando vacantes');
@@ -224,12 +533,15 @@ export default function EvaluacionesPage() {
                 <option value="expirada">Expirada</option>
               </select>
             </div>
-            <Link href="/evaluaciones/nueva">
-              <Button className="bg-teal hover:bg-teal/90 gap-1.5">
-                <Plus className="h-4 w-4" />
-                Nueva Evaluación
-              </Button>
-            </Link>
+            <div className="flex gap-2">
+              <EnvioMasivoDialog onSuccess={fetchEvaluaciones} />
+              <Link href="/evaluaciones/nueva">
+                <Button className="bg-teal hover:bg-teal/90 gap-1.5">
+                  <Plus className="h-4 w-4" />
+                  Nueva Evaluación
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {loadingEvals ? (

@@ -47,6 +47,7 @@ import {
   Loader2, Mail, Phone, MapPin, Linkedin, FileCheck, Users, UserCheck, FileText,
   MoreHorizontal, Eye, ArrowRight, ArrowLeft, XCircle, Brain, CheckCircle, Award,
 } from 'lucide-react';
+import { SelectorEstadoAplicacion } from '@/components/candidatos/selector-estado-aplicacion';
 
 interface PipelineCompletoProps {
   vacanteId: string;
@@ -90,8 +91,8 @@ export function PipelineCompleto({
       setAplicaciones((prev) =>
         prev.map((a) => (a.id === aplicacionId ? { ...a, estado: nuevoEstado } : a))
       );
-      const res = await fetch(`/api/candidatos/${aplicacionId}`, {
-        method: 'PUT',
+      const res = await fetch(`/api/aplicaciones/${aplicacionId}/estado`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado: nuevoEstado }),
       });
@@ -326,10 +327,15 @@ export function PipelineCompleto({
                           )
                         )}
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs capitalize">
-                          {app.estado.replace(/_/g, ' ')}
-                        </Badge>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <SelectorEstadoAplicacion
+                          aplicacionId={app.id}
+                          estadoActual={app.estado}
+                          estadosCompletados={app.estados_completados || []}
+                          candidatoNombre={`${app.candidato.nombre} ${app.candidato.apellido}`}
+                          onEstadoCambiado={fetchData}
+                          size="sm"
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1 max-w-[200px]">

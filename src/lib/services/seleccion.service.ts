@@ -6,7 +6,15 @@
 import { pool } from '@/lib/db';
 import { getAppUrl } from '@/lib/utils/url';
 import { sendEmail } from './email.service';
-import { emailSeleccionTemplate, emailRechazoTemplate, emailDocumentosCompletosTemplate } from '@/lib/utils/email-templates';
+import {
+  emailSeleccionTemplate,
+  emailRechazoTemplate,
+  emailDocumentosCompletosTemplate,
+  emailDocumentoRechazadoTemplate,
+  DEFAULT_TEMPLATE_SELECCION,
+  DEFAULT_TEMPLATE_RECHAZO,
+  sustituirVariables,
+} from '@/lib/utils/email-templates';
 import { randomBytes } from 'crypto';
 import { NotFoundError, ValidationError } from '@/lib/utils/errors';
 import type {
@@ -129,29 +137,67 @@ export async function seleccionarCandidato(
     const portalUrl = `${baseUrl}/portal/documentos/${portalToken}`;
 
     if (payload.enviar_email_seleccion && app.candidato_email) {
-      const docsRequeridos = checklist
-        .filter(d => d.requerido)
-        .map(d => ({ label: d.label, descripcion: d.descripcion }));
-
-      const emailData = emailSeleccionTemplate({
-        candidatoNombre: `${app.candidato_nombre} ${app.candidato_apellido || ''}`.trim(),
-        vacanteTitulo: app.vacante_titulo,
-        empresaNombre: app.org_nombre,
-        portalUrl,
-        documentosRequeridos: docsRequeridos,
-        mensajePersonalizado: payload.mensaje_personalizado,
-        fechaInicio: payload.fecha_inicio_tentativa,
-        salario: payload.salario_ofrecido
+      try {
+        const candidatoNombre = `${app.candidato_nombre} ${app.candidato_apellido || ''}`.trim();
+        const docsRequeridos = checklist
+          .filter(d => d.requerido)
+          .map(d => ({ label: d.label, descripcion: d.descripcion }));
+        const salarioStr = payload.salario_ofrecido
           ? `${new Intl.NumberFormat('es-CO').format(payload.salario_ofrecido)} ${payload.moneda || 'COP'}`
-          : undefined,
-      });
+          : '';
+        const fechaLimiteDocs = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+          .toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
 
-      await sendEmail({
-        to: app.candidato_email,
-        subject: emailData.subject,
-        htmlBody: emailData.htmlBody,
-        textBody: emailData.textBody,
-      });
+        // Check if org has a custom template in org_settings
+        const { rows: settingsRows } = await pool.query(
+          `SELECT email_seleccion_body FROM org_settings WHERE organization_id = $1`,
+          [orgId]
+        );
+        const customTemplate = settingsRows[0]?.email_seleccion_body;
+
+        if (customTemplate) {
+          // Use custom template with variable substitution
+          const variables: Record<string, string> = {
+            candidato_nombre: candidatoNombre,
+            vacante_titulo: app.vacante_titulo,
+            empresa_nombre: app.org_nombre,
+            portal_url: portalUrl,
+            documentos_requeridos: docsRequeridos.map(d => d.label).join(', '),
+            fecha_limite_docs: fechaLimiteDocs,
+            fecha_inicio: payload.fecha_inicio_tentativa || '',
+            salario: salarioStr,
+          };
+          const htmlBody = sustituirVariables(customTemplate, variables);
+
+          await sendEmail({
+            to: app.candidato_email,
+            subject: `Felicidades! Has sido seleccionado(a) para ${app.vacante_titulo}`,
+            htmlBody,
+            textBody: `Felicidades ${candidatoNombre}! Has sido seleccionado(a) para ${app.vacante_titulo} en ${app.org_nombre}. Sube tus documentos aqui: ${portalUrl}`,
+          });
+        } else {
+          // Fallback to built-in template function
+          const emailData = emailSeleccionTemplate({
+            candidatoNombre,
+            vacanteTitulo: app.vacante_titulo,
+            empresaNombre: app.org_nombre,
+            portalUrl,
+            documentosRequeridos: docsRequeridos,
+            mensajePersonalizado: payload.mensaje_personalizado,
+            fechaInicio: payload.fecha_inicio_tentativa,
+            salario: salarioStr || undefined,
+          });
+
+          await sendEmail({
+            to: app.candidato_email,
+            subject: emailData.subject,
+            htmlBody: emailData.htmlBody,
+            textBody: emailData.textBody,
+          });
+        }
+      } catch (emailError) {
+        console.error('[Seleccion] Error enviando email de seleccion:', emailError);
+      }
     }
 
     return { portalUrl, portalToken };
@@ -206,19 +252,48 @@ export async function rechazarCandidatos(
       );
 
       if (payload.enviar_email_rechazo && app.candidato_email) {
-        const emailData = emailRechazoTemplate({
-          candidatoNombre: `${app.candidato_nombre} ${app.candidato_apellido || ''}`.trim(),
-          vacanteTitulo: app.vacante_titulo,
-          empresaNombre: app.org_nombre,
-          mensajePersonalizado: payload.mensaje_personalizado,
-        });
+        try {
+          const candidatoNombre = `${app.candidato_nombre} ${app.candidato_apellido || ''}`.trim();
 
-        await sendEmail({
-          to: app.candidato_email,
-          subject: emailData.subject,
-          htmlBody: emailData.htmlBody,
-          textBody: emailData.textBody,
-        });
+          // Check if org has a custom rejection template
+          const { rows: settingsRows } = await pool.query(
+            `SELECT email_rechazo_body FROM org_settings WHERE organization_id = $1`,
+            [orgId]
+          );
+          const customTemplate = settingsRows[0]?.email_rechazo_body;
+
+          if (customTemplate) {
+            const variables: Record<string, string> = {
+              candidato_nombre: candidatoNombre,
+              vacante_titulo: app.vacante_titulo,
+              empresa_nombre: app.org_nombre,
+            };
+            const htmlBody = sustituirVariables(customTemplate, variables);
+
+            await sendEmail({
+              to: app.candidato_email,
+              subject: `Gracias por tu interes en ${app.vacante_titulo} — ${app.org_nombre}`,
+              htmlBody,
+              textBody: `Estimado/a ${candidatoNombre}, agradecemos tu interes en ${app.vacante_titulo} en ${app.org_nombre}. Lamentablemente hemos decidido continuar con otros candidatos.`,
+            });
+          } else {
+            const emailData = emailRechazoTemplate({
+              candidatoNombre,
+              vacanteTitulo: app.vacante_titulo,
+              empresaNombre: app.org_nombre,
+              mensajePersonalizado: payload.mensaje_personalizado,
+            });
+
+            await sendEmail({
+              to: app.candidato_email,
+              subject: emailData.subject,
+              htmlBody: emailData.htmlBody,
+              textBody: emailData.textBody,
+            });
+          }
+        } catch (emailError) {
+          console.error('[Seleccion] Error enviando email de rechazo:', emailError);
+        }
       }
 
       enviados++;
@@ -286,17 +361,22 @@ export async function verificarDocumento(
   accion: 'verificar' | 'rechazar',
   notaRechazo?: string
 ): Promise<void> {
-  // Verify ownership
+  // Verify ownership — include candidate + vacancy info for rejection email
   const docResult = await pool.query(
-    `SELECT dc.*, a.id as app_id
+    `SELECT dc.*, a.id as app_id, a.portal_token,
+            c.nombre as candidato_nombre, c.apellido as candidato_apellido, c.email as candidato_email,
+            v.titulo as vacante_titulo, o.name as org_nombre
      FROM documentos_candidato dc
      JOIN aplicaciones a ON a.id = dc.aplicacion_id
      JOIN vacantes v ON v.id = a.vacante_id
+     JOIN organizations o ON o.id = v.organization_id
+     JOIN candidatos c ON c.id = a.candidato_id
      WHERE dc.id = $1 AND v.organization_id = $2`,
     [documentoId, orgId]
   );
   if (docResult.rows.length === 0) throw new NotFoundError('Documento', documentoId);
 
+  const doc = docResult.rows[0];
   const newEstado = accion === 'verificar' ? 'verificado' : 'rechazado';
 
   await pool.query(
@@ -310,7 +390,7 @@ export async function verificarDocumento(
   );
 
   // Check if all required docs are verified
-  const aplicacionId = docResult.rows[0].app_id;
+  const aplicacionId = doc.app_id;
   await checkDocumentosCompleteness(aplicacionId, orgId);
 
   // Log activity
@@ -318,10 +398,40 @@ export async function verificarDocumento(
     `INSERT INTO activity_log (organization_id, user_id, entity_type, entity_id, action, details)
      VALUES ($1, $2, 'documento', $3, $4, $5)`,
     [orgId, userId, documentoId, accion, JSON.stringify({
-      documento_tipo: docResult.rows[0].tipo,
+      documento_tipo: doc.tipo,
       nota_rechazo: notaRechazo,
     })]
   );
+
+  // S7b: Send rejection email to candidate
+  if (accion === 'rechazar' && doc.candidato_email) {
+    try {
+      const baseUrl = getAppUrl();
+      const portalUrl = doc.portal_token
+        ? `${baseUrl}/portal/documentos/${doc.portal_token}`
+        : baseUrl;
+
+      const candidatoNombre = `${doc.candidato_nombre} ${doc.candidato_apellido || ''}`.trim();
+      const emailData = emailDocumentoRechazadoTemplate({
+        candidatoNombre,
+        empresaNombre: doc.org_nombre,
+        vacanteTitulo: doc.vacante_titulo,
+        documentoTipo: doc.nombre_archivo || doc.tipo,
+        motivoRechazo: notaRechazo || 'No se especifico un motivo',
+        portalUrl,
+      });
+
+      await sendEmail({
+        to: doc.candidato_email,
+        subject: emailData.subject,
+        htmlBody: emailData.htmlBody,
+        textBody: emailData.textBody,
+      });
+    } catch (emailError) {
+      // Rejection must succeed even if email fails
+      console.error('[Seleccion] Error enviando email de documento rechazado:', emailError);
+    }
+  }
 }
 
 async function checkDocumentosCompleteness(aplicacionId: string, orgId: string): Promise<void> {
