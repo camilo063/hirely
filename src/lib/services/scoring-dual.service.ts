@@ -11,6 +11,39 @@ import { UUID } from '@/lib/types/common.types';
  * Human score comes in scale 1-10 per criterion, converted to 0-100.
  */
 
+/**
+ * Recalculates score_final for an aplicacion based on all available partial scores.
+ * Weights: ATS 20%, IA 25%, Tecnico 30%, Humano 25%.
+ * Adjusts dynamically when some scores are missing.
+ * Safe to call from anywhere — no-ops if aplicacion not found or no scores exist.
+ */
+export async function recalcularScoreFinal(aplicacionId: string): Promise<void> {
+  const { rows } = await pool.query(
+    `SELECT score_ats, score_ia, score_tecnico, score_humano FROM aplicaciones WHERE id = $1`,
+    [aplicacionId]
+  );
+  if (!rows[0]) return;
+
+  const { score_ats, score_ia, score_tecnico, score_humano } = rows[0];
+
+  const scores = [
+    { valor: score_ats, peso: 0.20 },
+    { valor: score_ia, peso: 0.25 },
+    { valor: score_tecnico, peso: 0.30 },
+    { valor: score_humano, peso: 0.25 },
+  ].filter(s => s.valor !== null && s.valor !== undefined);
+
+  if (scores.length === 0) return;
+
+  const pesoTotal = scores.reduce((sum, s) => sum + s.peso, 0);
+  const scoreFinal = scores.reduce((sum, s) => sum + (s.valor * s.peso / pesoTotal), 0);
+
+  await pool.query(
+    `UPDATE aplicaciones SET score_final = $1, updated_at = NOW() WHERE id = $2`,
+    [Math.round(scoreFinal), aplicacionId]
+  );
+}
+
 export function calcularScoreHumano(evaluacion: EvaluacionHumana): number {
   const criterios = [
     evaluacion.competencia_tecnica.score,
@@ -73,6 +106,13 @@ export async function guardarEvaluacionHumana(
      WHERE id = $3`,
     [scoreHumano, scoreFinal, app.id]
   );
+
+  // 4b. Recalculate score_final with all available components
+  try {
+    await recalcularScoreFinal(app.id);
+  } catch (err) {
+    console.error('[Scoring Dual] Error recalculando score_final:', err);
+  }
 
   // 5. Log
   await pool.query(

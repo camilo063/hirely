@@ -41,6 +41,8 @@ export default function BancoPreguntasPage() {
   const [filterCat, setFilterCat] = useState('');
   const [filterDif, setFilterDif] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
+  const [page, setPage] = useState(1);
+  const limit = 15;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingPregunta, setEditingPregunta] = useState<PreguntaBanco | null>(null);
   const [iaModalOpen, setIaModalOpen] = useState(false);
@@ -53,7 +55,8 @@ export default function BancoPreguntasPage() {
       if (filterDif) params.set('dificultad', filterDif);
       if (filterTipo) params.set('tipo', filterTipo);
       if (busqueda) params.set('busqueda', busqueda);
-      params.set('limit', '100');
+      params.set('limit', String(limit));
+      params.set('page', String(page));
 
       const res = await fetch(`/api/evaluaciones/banco-preguntas?${params}`);
       const data = await res.json();
@@ -66,7 +69,7 @@ export default function BancoPreguntasPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterCat, filterDif, filterTipo, busqueda]);
+  }, [filterCat, filterDif, filterTipo, busqueda, page]);
 
   const fetchCategorias = useCallback(async () => {
     try {
@@ -146,7 +149,7 @@ export default function BancoPreguntasPage() {
           <Badge
             variant={filterCat === '' ? 'default' : 'outline'}
             className="cursor-pointer"
-            onClick={() => setFilterCat('')}
+            onClick={() => { setFilterCat(''); setPage(1); }}
           >
             Todas ({totalPreguntas})
           </Badge>
@@ -155,7 +158,7 @@ export default function BancoPreguntasPage() {
               key={cat.categoria}
               variant={filterCat === cat.categoria ? 'default' : 'outline'}
               className="cursor-pointer"
-              onClick={() => setFilterCat(filterCat === cat.categoria ? '' : cat.categoria)}
+              onClick={() => { setFilterCat(filterCat === cat.categoria ? '' : cat.categoria); setPage(1); }}
             >
               {cat.categoria} ({cat.total})
             </Badge>
@@ -170,13 +173,13 @@ export default function BancoPreguntasPage() {
           <Input
             placeholder="Buscar por enunciado..."
             value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
+            onChange={(e) => { setBusqueda(e.target.value); setPage(1); }}
             className="pl-9"
           />
         </div>
         <select
           value={filterDif}
-          onChange={(e) => setFilterDif(e.target.value)}
+          onChange={(e) => { setFilterDif(e.target.value); setPage(1); }}
           className="border rounded-lg px-3 py-2 text-sm bg-white"
         >
           <option value="">Dificultad</option>
@@ -187,7 +190,7 @@ export default function BancoPreguntasPage() {
         </select>
         <select
           value={filterTipo}
-          onChange={(e) => setFilterTipo(e.target.value)}
+          onChange={(e) => { setFilterTipo(e.target.value); setPage(1); }}
           className="border rounded-lg px-3 py-2 text-sm bg-white"
         >
           <option value="">Tipo</option>
@@ -200,7 +203,7 @@ export default function BancoPreguntasPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => { setFilterCat(''); setFilterDif(''); setFilterTipo(''); setBusqueda(''); }}
+            onClick={() => { setFilterCat(''); setFilterDif(''); setFilterTipo(''); setBusqueda(''); setPage(1); }}
           >
             Limpiar
           </Button>
@@ -277,9 +280,47 @@ export default function BancoPreguntasPage() {
               </tbody>
             </table>
           </div>
-          {total > preguntas.length && (
-            <div className="px-4 py-3 text-xs text-muted-foreground border-t">
-              Mostrando {preguntas.length} de {total} preguntas
+          {total > 0 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <span className="text-xs text-muted-foreground">
+                Mostrando {((page - 1) * limit) + 1}-{Math.min(page * limit, total)} de {total} preguntas
+              </span>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page <= 1}
+                  onClick={() => setPage(p => p - 1)}
+                >
+                  Anterior
+                </Button>
+                {(() => {
+                  const totalPages = Math.ceil(total / limit);
+                  const pages: number[] = [];
+                  const start = Math.max(1, page - 2);
+                  const end = Math.min(totalPages, start + 4);
+                  for (let i = start; i <= end; i++) pages.push(i);
+                  return pages.map(p => (
+                    <Button
+                      key={p}
+                      size="sm"
+                      variant={p === page ? 'default' : 'outline'}
+                      onClick={() => setPage(p)}
+                      className={p === page ? 'bg-teal hover:bg-teal/90' : ''}
+                    >
+                      {p}
+                    </Button>
+                  ));
+                })()}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page * limit >= total}
+                  onClick={() => setPage(p => p + 1)}
+                >
+                  Siguiente
+                </Button>
+              </div>
             </div>
           )}
         </Card>

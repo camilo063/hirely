@@ -14,13 +14,17 @@ export enum EstadoVacante {
 
 export enum EstadoAplicacion {
   NUEVO = 'nuevo',
+  EN_REVISION = 'en_revision',
   REVISADO = 'revisado',
   PRESELECCIONADO = 'preseleccionado',
   ENTREVISTA_IA = 'entrevista_ia',
   ENTREVISTA_HUMANA = 'entrevista_humana',
   EVALUADO = 'evaluado',
   SELECCIONADO = 'seleccionado',
+  DOCUMENTOS_PENDIENTES = 'documentos_pendientes',
+  DOCUMENTOS_COMPLETOS = 'documentos_completos',
   CONTRATADO = 'contratado',
+  CONTRATO_TERMINADO = 'contrato_terminado',
   DESCARTADO = 'descartado',
 }
 

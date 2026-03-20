@@ -82,7 +82,7 @@ export default function NuevaEvaluacionPage() {
   }, [selectedVacante, vacantes, titulo]);
 
   async function fetchVacantes() {
-    const res = await fetch('/api/vacantes');
+    const res = await fetch('/api/vacantes?estado=publicada&limit=100');
     const data = await res.json();
     if (data.success) setVacantes(data.data?.data || data.data || []);
   }
