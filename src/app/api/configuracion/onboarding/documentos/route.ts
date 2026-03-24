@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       }
 
       validateFile(file);
-      const { url } = await saveFile(file, orgId, `onboarding-${Date.now()}`);
+      const { url } = await saveFile(file, orgId, `onboarding-${Date.now()}`, orgId, 'onboarding');
 
       const docId = await addDocumentoOnboarding(orgId, {
         nombre,

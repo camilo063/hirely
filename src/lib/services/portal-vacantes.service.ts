@@ -211,7 +211,7 @@ export async function procesarAplicacionPortal(params: {
   if (params.cvFile) {
     try {
       const { saveFile } = await import('@/lib/utils/file-storage');
-      const saved = await saveFile(params.cvFile, candidatoId, 'cv');
+      const saved = await saveFile(params.cvFile, candidatoId, 'cv', vacante.organization_id, 'candidatos');
       await pool.query('UPDATE candidatos SET cv_url = $1 WHERE id = $2', [saved.url, candidatoId]);
     } catch (error) {
       console.error('[Portal] Error guardando CV:', error);
