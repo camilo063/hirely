@@ -205,16 +205,31 @@ export async function descargarDocumentoFirmado(
   try {
     const pdfBuffer = await firmaProvider.descargarDocumentoFirmado(contrato.firma_external_id);
 
-    // Save to local storage
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const dir = path.join(process.cwd(), 'public', 'uploads', 'contratos');
-    await fs.mkdir(dir, { recursive: true });
+    // Save via file-storage (S3 in prod, local in dev)
+    const { isS3Configured, uploadToS3, buildS3Key } = await import('@/lib/integrations/s3');
 
+    let url: string;
     const filename = `contrato_firmado_${contratoId}.pdf`;
-    await fs.writeFile(path.join(dir, filename), pdfBuffer);
 
-    const url = `/uploads/contratos/${filename}`;
+    if (isS3Configured) {
+      const key = buildS3Key(orgId, 'contratos', contratoId, filename);
+      const result = await uploadToS3({
+        key,
+        body: pdfBuffer,
+        contentType: 'application/pdf',
+        metadata: { 'contrato-id': contratoId },
+      });
+      url = result.url;
+    } else {
+      // Local fallback
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const dir = path.join(process.cwd(), 'public', 'uploads', 'contratos');
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(path.join(dir, filename), pdfBuffer);
+      url = `/uploads/contratos/${filename}`;
+    }
+
     await pool.query(
       'UPDATE contratos SET firma_pdf_url = $2, updated_at = NOW() WHERE id = $1',
       [contratoId, url]

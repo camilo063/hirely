@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { saveFile, FileValidationError } from '@/lib/utils/file-storage';
 import { uploadDocumentoPortal, getPortalData } from '@/lib/services/seleccion.service';
+import { pool } from '@/lib/db';
 
 // POST /api/portal/documentos/[token]/upload — Public file upload (no auth required)
 export async function POST(
@@ -32,8 +33,16 @@ export async function POST(
       );
     }
 
+    // Get orgId for multi-tenant S3 isolation
+    const aplicacionId = portalData.aplicacion_id as string;
+    const orgResult = await pool.query(
+      `SELECT v.organization_id FROM aplicaciones a JOIN vacantes v ON v.id = a.vacante_id WHERE a.id = $1`,
+      [aplicacionId]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
     // Save file to storage
-    const { url } = await saveFile(file, portalData.aplicacion_id as string, tipo);
+    const { url } = await saveFile(file, aplicacionId, tipo, orgId, 'documentos');
 
     // Update DB
     await uploadDocumentoPortal(
