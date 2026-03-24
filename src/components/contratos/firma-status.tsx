@@ -9,6 +9,7 @@ interface FirmaStatusProps {
   firmaUrl: string | null;
   firmadoAt: string | null;
   onEnviarFirma?: () => void;
+  onConfirmarFirma?: () => void;
   loading?: boolean;
 }
 
@@ -20,7 +21,7 @@ const estadoConfig: Record<string, { icon: typeof Clock; label: string; color: s
   rechazado: { icon: XCircle, label: 'Rechazado', color: 'bg-destructive/10 text-destructive' },
 };
 
-export function FirmaStatus({ estado, firmaUrl, firmadoAt, onEnviarFirma, loading }: FirmaStatusProps) {
+export function FirmaStatus({ estado, firmaUrl, firmadoAt, onEnviarFirma, onConfirmarFirma, loading }: FirmaStatusProps) {
   const config = estadoConfig[estado] || estadoConfig.borrador;
   const EstadoIcon = config.icon;
 
@@ -45,6 +46,13 @@ export function FirmaStatus({ estado, firmaUrl, firmadoAt, onEnviarFirma, loadin
             <Button onClick={onEnviarFirma} className="bg-teal hover:bg-teal/90 text-white" disabled={loading}>
               <Send className="h-4 w-4 mr-2" />
               {loading ? 'Enviando...' : 'Enviar para firma'}
+            </Button>
+          )}
+
+          {estado === 'enviado' && onConfirmarFirma && (
+            <Button onClick={onConfirmarFirma} className="bg-success hover:bg-success/90 text-white" disabled={loading}>
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Confirmar: ambas partes han firmado
             </Button>
           )}
         </div>

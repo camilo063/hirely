@@ -81,7 +81,8 @@ export async function autoPoblarDatos(
       v.ubicacion as vacante_ubicacion,
       v.rango_salarial_min,
       v.rango_salarial_max,
-      o.name as org_nombre
+      o.name as org_nombre,
+      o.config_empresa
     FROM aplicaciones a
     JOIN candidatos c ON a.candidato_id = c.id
     JOIN vacantes v ON a.vacante_id = v.id
@@ -103,19 +104,24 @@ export async function autoPoblarDatos(
     day: 'numeric', month: 'long', year: 'numeric',
   });
 
+  const configEmpresa = (typeof row.config_empresa === 'object' && row.config_empresa) ? row.config_empresa : {};
+
   const datos: Partial<DatosContrato> = {
     nombre_completo: nombreCompleto,
     correo: row.candidato_email || '',
     telefono: row.candidato_telefono || '',
     ciudad: row.candidato_ubicacion || '',
     cargo: row.vacante_titulo || '',
-    empresa_nombre: row.org_nombre || '',
+    empresa_nombre: configEmpresa.nombre || row.org_nombre || '',
+    empresa_nit: configEmpresa.nit || '',
+    empresa_representante: configEmpresa.representante_legal || '',
+    empresa_direccion: configEmpresa.direccion || '',
     salario: salario,
     modalidad: row.vacante_modalidad || '',
     ubicacion_trabajo: row.vacante_ubicacion || '',
     fecha_contrato: today,
     fecha_inicio: '',
-    ciudad_contrato: 'Bogotá D.C.',
+    ciudad_contrato: configEmpresa.ciudad || 'Bogotá D.C.',
   };
 
   // Set defaults from VARIABLES_CONTRATO
@@ -168,7 +174,7 @@ export async function createContrato(
       }
     }
     if (!htmlContent) {
-      const defaultTpl = PLANTILLAS_CONTRATO_DEFAULT[tipo as TipoContrato];
+      const defaultTpl = PLANTILLAS_CONTRATO_DEFAULT[tipo as TipoContrato] || PLANTILLAS_CONTRATO_DEFAULT['laboral'];
       if (defaultTpl) {
         htmlContent = renderPlantillaContrato(defaultTpl.contenido_html, input.datos as Record<string, unknown>);
       }
@@ -299,6 +305,21 @@ export async function regenerarHtml(
   const contrato = await getContrato(orgId, contratoId);
   const datos = contrato.datos_contrato || {};
 
+  // Refrescar datos de empresa desde config_empresa actual
+  const orgResult = await pool.query(
+    'SELECT name, config_empresa FROM organizations WHERE id = $1',
+    [orgId]
+  );
+  if (orgResult.rows.length > 0) {
+    const org = orgResult.rows[0];
+    const cfg = org.config_empresa || {};
+    datos.empresa_nombre = org.name || datos.empresa_nombre;
+    if (cfg.nit) datos.empresa_nit = cfg.nit;
+    if (cfg.representante_legal) datos.empresa_representante = cfg.representante_legal;
+    if (cfg.direccion) datos.empresa_direccion = cfg.direccion;
+    if (cfg.ciudad) datos.ciudad_contrato = cfg.ciudad;
+  }
+
   let template = '';
   if (contrato.plantilla_id) {
     const tplResult = await pool.query<PlantillaContrato>(
@@ -317,6 +338,7 @@ export async function regenerarHtml(
   const htmlContent = template ? renderPlantillaContrato(template, datos as Record<string, unknown>) : '';
 
   return updateContrato(orgId, contratoId, userId, {
+    datos: datos as Partial<DatosContrato>,
     contenido_html: htmlContent,
     nota_cambio: 'HTML regenerado desde plantilla',
   });

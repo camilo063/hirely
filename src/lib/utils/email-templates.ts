@@ -506,3 +506,109 @@ export function emailDocumentoRechazadoTemplate(params: {
     textBody,
   };
 }
+
+export function emailContratadoTemplate(params: {
+  candidatoNombre: string;
+  vacanteTitulo: string;
+  empresaNombre: string;
+  salario?: string;
+  fechaInicio?: string;
+}): { subject: string; htmlBody: string } {
+  const detalles = [];
+  if (params.salario) detalles.push(`<p style="color: #374151; margin: 6px 0;"><strong>Salario:</strong> ${params.salario}</p>`);
+  if (params.fechaInicio) detalles.push(`<p style="color: #374151; margin: 6px 0;"><strong>Fecha de inicio:</strong> ${params.fechaInicio}</p>`);
+
+  const htmlBody = `
+    <div style="${HIRELY_STYLES.wrapper}">
+      <div style="background: linear-gradient(135deg, #0A1F3F 0%, #1a3a6b 100%); padding: 40px 32px; border-radius: 12px 12px 0 0; text-align: center;">
+        <div style="font-size: 48px; margin-bottom: 12px;">&#127881;</div>
+        <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">Felicitaciones!</h1>
+        <p style="color: #94c8f5; margin: 8px 0 0; font-size: 16px;">Has sido seleccionado/a</p>
+      </div>
+      <div style="${HIRELY_STYLES.body}">
+        <p style="${HIRELY_STYLES.p}">
+          Estimado/a <strong>${params.candidatoNombre}</strong>,
+        </p>
+        <p style="${HIRELY_STYLES.p}">
+          Nos complace comunicarte que has sido seleccionado/a para el cargo de
+          <strong>${params.vacanteTitulo}</strong> en <strong>${params.empresaNombre}</strong>.
+        </p>
+        ${detalles.length > 0 ? `
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin: 24px 0;">
+          <h3 style="color: #166534; margin: 0 0 12px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+            Detalles de tu vinculacion
+          </h3>
+          ${detalles.join('')}
+        </div>
+        ` : ''}
+        <p style="${HIRELY_STYLES.p}">
+          En los proximos dias recibiras tu contrato para revision y firma electronica.
+          Por favor manten tu correo atento.
+        </p>
+        <p style="${HIRELY_STYLES.p}">
+          Bienvenido/a al equipo!
+        </p>
+        <hr style="${HIRELY_STYLES.hr}">
+        <p style="${HIRELY_STYLES.footer}">
+          Este email fue enviado por ${params.empresaNombre} a traves de Hirely.
+        </p>
+      </div>
+    </div>
+  `;
+
+  return {
+    subject: `Felicitaciones ${params.candidatoNombre}! Fuiste seleccionado/a para ${params.vacanteTitulo}`,
+    htmlBody,
+  };
+}
+
+export function emailOnboardingTemplate(params: {
+  candidatoNombre: string;
+  vacanteTitulo: string;
+  empresaNombre: string;
+}): { subject: string; htmlBody: string } {
+  const htmlBody = `
+    <div style="${HIRELY_STYLES.wrapper}">
+      <div style="background: linear-gradient(135deg, #0A1F3F 0%, #1a3a6b 100%); padding: 40px 32px; border-radius: 12px 12px 0 0; text-align: center;">
+        <div style="font-size: 48px; margin-bottom: 12px;">&#128640;</div>
+        <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">Bienvenido/a!</h1>
+        <p style="color: #94c8f5; margin: 8px 0 0; font-size: 16px;">Tu contrato ha sido firmado</p>
+      </div>
+      <div style="${HIRELY_STYLES.body}">
+        <p style="${HIRELY_STYLES.p}">
+          Hola <strong>${params.candidatoNombre}</strong>,
+        </p>
+        <p style="${HIRELY_STYLES.p}">
+          Te confirmamos que tu contrato para la posicion de <strong>${params.vacanteTitulo}</strong>
+          en <strong>${params.empresaNombre}</strong> ha sido firmado por todas las partes.
+        </p>
+        <div style="background: #dcfce7; padding: 16px; border-radius: 8px; margin: 20px 0; text-align: center;">
+          <p style="color: #166534; font-size: 16px; font-weight: bold; margin: 0;">
+            Contrato firmado exitosamente
+          </p>
+        </div>
+        <p style="${HIRELY_STYLES.p}">
+          Pronto recibiras informacion detallada sobre tu proceso de incorporacion,
+          incluyendo fecha de inicio, documentacion adicional y contacto de tu equipo.
+        </p>
+        <p style="${HIRELY_STYLES.p}">
+          Si tienes alguna pregunta, no dudes en contactar al equipo de recursos humanos.
+        </p>
+        <p style="${HIRELY_STYLES.p}">
+          Cordialmente,<br/>
+          <strong>Equipo de Recursos Humanos</strong><br/>
+          ${params.empresaNombre}
+        </p>
+        <hr style="${HIRELY_STYLES.hr}">
+        <p style="${HIRELY_STYLES.footer}">
+          Este email fue enviado por ${params.empresaNombre} a traves de Hirely.
+        </p>
+      </div>
+    </div>
+  `;
+
+  return {
+    subject: `Bienvenido/a a ${params.empresaNombre}! — Informacion de incorporacion`,
+    htmlBody,
+  };
+}

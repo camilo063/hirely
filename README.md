@@ -7,7 +7,7 @@ Plataforma SaaS multi-tenant de reclutamiento y seleccion de personal, construid
 | Capa | Tecnologia |
 |------|-----------|
 | Frontend | Next.js 14 (App Router) + TypeScript + Tailwind CSS |
-| UI | shadcn/ui (27 componentes base + 72 componentes de dominio) |
+| UI | shadcn/ui (27 componentes base + 74 componentes de dominio) |
 | Auth | NextAuth.js v5 (Credentials + JWT) |
 | Base de datos | PostgreSQL 16 (Docker) |
 | Validacion | Zod 4.3 |
@@ -96,8 +96,8 @@ src/
 ├── hooks/                   # 8 custom hooks (useDebounce, useCandidatos, useVacantes, useLinkedin, useToast, useReportes, useReveal, useTiposContrato)
 ├── lib/
 │   ├── auth/                # NextAuth config + API middleware helpers
-│   ├── db/                  # Pool de conexion + 20 migraciones SQL
-│   │   ├── migrations/      # 001-020 migraciones
+│   ├── db/                  # Pool de conexion + 24 migraciones SQL
+│   │   ├── migrations/      # 001-024 migraciones
 │   │   └── seeds/           # Preguntas iniciales de evaluacion
 │   ├── integrations/        # Clientes externos (Anthropic, Dapta, LinkedIn, Resend, SignWell, Google Calendar)
 │   ├── services/            # 27 servicios de logica de negocio
@@ -108,7 +108,7 @@ src/
 └── middleware.ts            # Edge middleware (proteccion de rutas)
 ```
 
-**Totales:** 314 archivos TypeScript/TSX, 99 componentes, 83 endpoints API, 27 servicios, 20 migraciones
+**Totales:** 320+ archivos TypeScript/TSX, 101 componentes, 87 endpoints API, 27 servicios, 24 migraciones
 
 ---
 
@@ -325,7 +325,14 @@ src/
 
 **Paginas:** `/onboarding`, `/configuracion` (tab Onboarding)
 
-- Boton "Contratar" desde el pipeline: transiciona candidato de `seleccionado -> contratado`
+- Boton "Contratar" desde el pipeline: transiciona candidato de `documentos_completados -> contratado`
+- **Flujo automatico al marcar contratado:**
+  1. Email de felicitaciones al candidato (siempre, independiente del contrato)
+  2. Creacion automatica de contrato borrador (con datos de empresa + candidato + vacante)
+  3. Toast con feedback: contrato creado o advertencia si fallo
+- **Flujo de onboarding post-firma:**
+  - Al confirmar firma bilateral del contrato, se dispara automaticamente el email de onboarding
+  - Se crea registro en tabla `onboarding` con estado del email
 - Email de bienvenida con plantilla HTML personalizable y 11 variables dinamicas:
   - `{{nombre_empleado}}`, `{{cargo}}`, `{{fecha_inicio}}`, `{{empresa}}`, `{{lider_nombre}}`, etc.
 - Envio inmediato o programado para la fecha de inicio laboral
@@ -355,45 +362,45 @@ src/
 
 ---
 
-### Modulo 9: Generacion de Contratos
+### Modulo 9: Generacion de Contratos + Firma Digital
 
-**Paginas:** `/contratos`, `/contratos/[id]`, `/configuracion` (tab Contratos)
+**Paginas:** `/contratos`, `/contratos/[id]`, `/configuracion` (tabs Contratos + Empresa)
 
-- 3 tipos de contrato para legislacion colombiana:
-  - **Prestacion de Servicios**: autonomia, honorarios, objeto del contrato
-  - **Horas y Demanda**: tarifa por hora, modalidad, reportes
-  - **Laboral**: jornada, prestaciones sociales, periodo de prueba
-- Auto-poblado de datos desde candidato/vacante/organizacion con un click
-- Plantillas HTML profesionales con variables `{{nombre_completo}}`, `{{cargo}}`, `{{salario}}`, etc.
+- **Tipos de contrato** para legislacion colombiana (configurables desde admin):
+  - Prestacion de Servicios, Termino Indefinido, Termino Fijo, Obra o Labor, Aprendizaje
+- **Creacion automatica** al marcar candidato como contratado:
+  - Detecta tipo de contrato desde la vacante
+  - Busca plantilla en tabla de mapeo `tipo_plantilla_mapeo`, luego por tipo directo
+  - Auto-pobla datos: candidato + vacante + config_empresa (NIT, representante legal, direccion)
+  - Crea contrato como borrador listo para revision
+- **Configuracion global de empresa** (Configuracion > Empresa):
+  - NIT, Representante Legal, Cargo del Representante, Direccion, Ciudad, Departamento, Pais, Telefono, Email
+  - Se persiste en `organizations.config_empresa` (JSONB)
+  - Se usa automaticamente en todos los contratos generados
+- **Mapeo tipo -> plantilla** (Configuracion > Contratos):
+  - Admin define que plantilla usar para cada tipo de contrato via selects
+  - Tabla `tipo_plantilla_mapeo` con UNIQUE por org + tipo
+  - Elimina logica de matching en codigo — todo administrable
+- Plantillas HTML profesionales con variables `{{nombre_completo}}`, `{{cargo}}`, `{{salario}}`, `{{empresa_nit}}`, etc.
 - ~20 variables por tipo de contrato (auto-detectadas o manuales)
-- Formulario de generacion:
-  - Selector de tipo de contrato
-  - Selector de plantilla (default o personalizada)
-  - Campos dinamicos segun tipo seleccionado
-  - Vista previa en vivo del documento renderizado
 - Editor de contrato dual:
   - Tab Datos: formulario editable con todos los campos
   - Tab HTML: editor de codigo directo
 - Versionamiento completo:
   - Cada cambio crea una nueva version automaticamente
   - Historial de versiones con autor, fecha y nota de cambio
-  - Restaurar versiones anteriores
+  - Regenerar HTML toma datos actualizados de config_empresa
 - State machine: `borrador -> generado -> enviado -> firmado / rechazado`
-- Acciones de documento:
-  - Imprimir (abre dialogo de impresion del navegador)
-  - Descargar como HTML
-  - Marcar como generado
-  - Enviar para firma electronica (SignWell en produccion, mock en desarrollo)
+- **Firma electronica bilateral** (SignWell en produccion, mock en desarrollo):
+  - Enviar para firma: inyecta campos de firma (`text_tags`) en el HTML del contrato
+  - Dos signatarios: candidato (orden 1) + empresa/admin (orden 2)
+  - `SIGNWELL_TEST_MODE=false` en `.env.local` para envio real de emails
+  - Confirmar firma bilateral: dialog con fecha y notas, dispara email de onboarding automatico
+  - Al confirmar firma: contrato -> firmado, crea registro onboarding, envia email al candidato
 - Dashboard de contratos:
   - Cards de resumen: borradores, generados, en firma, firmados
   - Tabla filtrable por estado, tipo y busqueda
-- Gestion de plantillas personalizadas desde Configuracion -> Contratos:
-  - CRUD completo de plantillas
-  - Panel de variables disponibles por tipo
-  - Vista previa con datos de ejemplo
-- Tipos de contrato configurables (CRUD admin)
-- Integracion en pipeline: tab "Contrato" para candidatos contratados
-- Firma electronica: integracion SignWell (produccion) con mock para desarrollo
+- Acciones de documento: Imprimir, Descargar HTML, Marcar como generado, Enviar para firma, Confirmar firma bilateral
 
 **Servicios:** contratos, firma-electronica, tipos-contrato
 
@@ -401,9 +408,13 @@ src/
 - `GET/POST /api/contratos` — listar (con filtros) y crear
 - `GET/PUT /api/contratos/[id]` — detalle y actualizar
 - `GET /api/contratos/[id]/versiones` — historial de versiones
-- `POST /api/contratos/[id]/regenerar` — regenerar HTML desde plantilla
-- `POST /api/contratos/[id]/firmar` — enviar para firma electronica
+- `POST /api/contratos/[id]/regenerar` — regenerar HTML desde plantilla (refresca datos empresa)
+- `POST /api/contratos/[id]/firmar` — enviar para firma electronica (SignWell)
+- `PATCH /api/contratos/[id]/firmar` — confirmar firma bilateral + trigger onboarding
+- `GET /api/contratos/[id]/firma` — consultar estado de firma + descargar PDF
 - `GET /api/contratos/auto-poblar` — auto-poblar datos del candidato
+- `GET/PATCH /api/configuracion/empresa` — config global de empresa (nombre, logo, NIT, representante, etc.)
+- `GET/POST/DELETE /api/configuracion/tipo-plantilla-mapeo` — mapeo tipo contrato -> plantilla
 - `GET/POST /api/plantillas-contrato` — listar y crear plantillas
 - `GET/PUT/DELETE /api/plantillas-contrato/[id]` — CRUD plantilla
 - `GET/POST /api/tipos-contrato` — listar y crear tipos de contrato
@@ -454,7 +465,8 @@ VACANTE:     borrador -> publicada -> pausada -> cerrada -> archivada
 
 APLICACION:  nuevo -> revisado -> preseleccionado -> entrevista_ia ->
              entrevista_humana -> evaluado -> seleccionado ->
-             documentos_pendientes -> documentos_completos -> contratado
+             documentos_pendientes -> documentos_completos -> contratado ->
+             contrato_terminado
              (cualquier estado -> descartado)
 
 ENTREVISTA IA:     pendiente -> en_progreso -> completada / cancelada
@@ -476,17 +488,21 @@ EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada
  4. Entrevista IA (Dapta) -> Transcripcion -> Analisis -> Score IA
  5. Agendar entrevista humana (Google Calendar + Meet) -> Evaluacion -> Score Humano
  6. Scoring Dual (ATS + Tecnico + IA + Humano) -> Ranking final
- 7. Seleccionar candidato
+ 7. Seleccionar candidato -> Auto-avance a documentos_pendientes
  8. Solicitar documentos (portal publico con token) -> Verificar completitud
- 9. Generar contrato -> Firma electronica (SignWell)
-10. Contratar -> Enviar email de bienvenida (Resend) -> Onboarding
+ 9. Marcar contratado ->
+    a. Email de felicitaciones al candidato (automatico, desacoplado del contrato)
+    b. Creacion automatica de contrato borrador (plantilla segun tipo de vacante + datos empresa)
+10. Admin revisa/edita contrato en /contratos/[id]
+11. Enviar para firma electronica (SignWell bilateral: candidato + empresa)
+12. Confirmar firma bilateral -> Email de onboarding al candidato (automatico)
 ```
 
 ---
 
 ## Base de Datos
 
-### Migraciones (20)
+### Migraciones (24)
 
 | # | Archivo | Descripcion |
 |---|---------|-------------|
@@ -510,10 +526,14 @@ EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada
 | 018 | `evaluaciones_seguridad.sql` | Columna eventos_seguridad JSONB en evaluaciones + indice GIN |
 | 019 | `analytics_integridad.sql` | Vistas SQL: v_integridad_evaluaciones, v_kpis_integridad, v_distribucion_incidentes |
 | 020 | `email_firma_admin.sql` | Email admin configurable para firma + plantillas email editables en org_settings |
+| 021 | `estados_completados.sql` | Array de estados completados en aplicaciones |
+| 022 | `terminacion_contrato.sql` | Tabla terminaciones_contrato con motivos y fecha |
+| 023 | `configuracion_empresa.sql` | Columna config_empresa JSONB en organizations (NIT, representante, direccion) |
+| 024 | `tipo_plantilla_mapeo.sql` | Tabla tipo_plantilla_mapeo: mapeo admin tipo contrato -> plantilla |
 
 ### Tablas Principales
 
-- **organizations** — multi-tenant (id, name, slug, plan, logo_url)
+- **organizations** — multi-tenant (id, name, slug, plan, logo_url, config_empresa JSONB)
 - **users** — roles: admin, reclutador, hiring_manager, viewer
 - **vacantes** — publicaciones de empleo con portal publico (slug, is_published)
 - **candidatos** — banco de talento con CV parseado (JSONB)
@@ -534,6 +554,8 @@ EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada
 - **google_tokens** — tokens OAuth de Google (Calendar, Meet)
 - **calendar_events** — vinculacion entrevista-evento de Google Calendar
 - **tipos_contrato** — tipos de contrato configurables (15 registros seed)
+- **tipo_plantilla_mapeo** — mapeo admin: tipo de contrato -> plantilla a usar (UNIQUE org + tipo)
+- **terminaciones_contrato** — registro de terminaciones con motivo, detalle y fecha
 - **activity_log** — auditoria de acciones
 
 ---
@@ -568,7 +590,7 @@ Variables opcionales por integracion:
 - **IA:** `ANTHROPIC_API_KEY`
 - **Dapta:** `DAPTA_FLOW_WEBHOOK_URL`, `DAPTA_API_KEY`, `DAPTA_WEBHOOK_SECRET`, `DAPTA_FROM_NUMBER`
 - **Email:** `RESEND_API_KEY`, `RESEND_FROM_EMAIL`
-- **Firma electronica:** `FIRMA_PROVIDER` (signwell|mock), `SIGNWELL_API_KEY`, `SIGNWELL_API_URL`
+- **Firma electronica:** `FIRMA_PROVIDER` (signwell|mock), `SIGNWELL_API_KEY`, `SIGNWELL_API_URL`, `SIGNWELL_TEST_MODE` (true|false, default true)
 - **Google:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
 - **Storage:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `AWS_REGION`
 - **App:** `APP_URL` (para webhooks de firma)
@@ -602,6 +624,20 @@ npm run db:seed     # Seed de datos
 ```
 
 ## Changelog
+
+### 2026-03-24 — Flujo completo de contratacion
+
+- **Email de contratado**: Al marcar candidato como contratado, se envia email de felicitaciones automaticamente (desacoplado del contrato)
+- **Configuracion global de empresa**: Nueva pestana "Empresa" en Configuracion con NIT, representante legal, direccion, etc. Persiste en `organizations.config_empresa` JSONB
+- **Creacion automatica de contrato**: Detecta tipo de contrato de la vacante, busca plantilla via mapeo admin, auto-pobla datos de empresa + candidato
+- **Mapeo tipo -> plantilla**: Nueva seccion en Configuracion > Contratos para definir que plantilla usar por tipo de contrato (dos selects, sin logica hardcodeada)
+- **Firma bilateral**: Boton "Confirmar: ambas partes han firmado" con dialog (fecha, notas), dispara email de onboarding automaticamente
+- **Onboarding post-firma**: Al confirmar firma bilateral, se crea registro onboarding y se envia email de bienvenida al candidato
+- **SignWell text tags**: Inyeccion automatica de campos de firma en el HTML del contrato para firma digital real
+- **`SIGNWELL_TEST_MODE`**: Variable de entorno para controlar test mode de SignWell (default true)
+- **Regenerar contrato**: Ahora refresca datos de empresa desde config_empresa actual
+- **Mejoras UI**: Toast mejorado al contratar, error handling en envio de firma, tab Organizacion funcional
+- **Migraciones**: 021 (estados_completados), 022 (terminacion_contrato), 023 (config_empresa), 024 (tipo_plantilla_mapeo)
 
 ### 2026-03-19 — Fixes S1-S7
 
@@ -644,17 +680,20 @@ Configurado para **Vercel** con:
 - Seleccion de candidatos con portal de documentos
 - Onboarding con emails de bienvenida (Resend, inmediatos/programados)
 - Plantillas de email editables (seleccion, rechazo, onboarding) desde configuracion
-- Generacion de contratos (3 tipos colombianos) con versionamiento
-- Tipos de contrato configurables (CRUD admin)
-- Firma electronica con SignWell (produccion) + mock (desarrollo)
+- Generacion de contratos (5 tipos colombianos) con versionamiento y creacion automatica
+- Tipos de contrato configurables (CRUD admin) + mapeo tipo -> plantilla administrable
+- Configuracion global de empresa (NIT, representante, direccion) para contratos
+- Firma electronica bilateral con SignWell (text tags, candidato + empresa) + mock (desarrollo)
+- Confirmacion de firma bilateral con trigger automatico de onboarding
+- Email de contratado desacoplado (siempre se envia, independiente del contrato)
 - Email admin configurable para firma digital
 - Integracion LinkedIn (OAuth, publicacion, sync)
 - Portal publico de empleo
 - Reportes y Analytics: pipeline (funnel, tiempos, volumen, scores) + integridad de evaluaciones
-- 27 componentes shadcn/ui + 72 de dominio
-- 83 endpoints API REST
+- 27 componentes shadcn/ui + 74 de dominio
+- 87 endpoints API REST
 - 27 servicios de logica de negocio
-- 20 migraciones SQL
+- 24 migraciones SQL
 
 ### Parcialmente implementado
 - AWS S3 storage (usa `/public/uploads/` en dev)

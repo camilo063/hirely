@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Building, Sliders, Link2, Save, FileCheck, UserCheck, FileSignature, Mail } from 'lucide-react';
+import { Building, Building2, Sliders, Link2, Save, FileCheck, UserCheck, FileSignature, Mail, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ import { PlantillaEditor } from '@/components/onboarding/plantilla-editor';
 import { DocumentosOnboardingConfig } from '@/components/onboarding/documentos-onboarding-config';
 import { PlantillaContratoEditor } from '@/components/contratos/plantilla-contrato-editor';
 import { TiposContratoConfig } from '@/components/configuracion/tipos-contrato-config';
+import { TipoPlantillaMapeo } from '@/components/configuracion/tipo-plantilla-mapeo';
 import { EmailTemplatesConfig } from '@/components/configuracion/email-templates-config';
 import { toast } from 'sonner';
 
@@ -26,6 +27,125 @@ export default function ConfiguracionPageWrapper() {
   );
 }
 
+function EmpresaConfig() {
+  const [nit, setNit] = useState('');
+  const [representanteLegal, setRepresentanteLegal] = useState('');
+  const [cargoRepresentante, setCargoRepresentante] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [ciudad, setCiudad] = useState('');
+  const [departamento, setDepartamento] = useState('');
+  const [pais, setPais] = useState('Colombia');
+  const [telefonoEmpresa, setTelefonoEmpresa] = useState('');
+  const [emailContratos, setEmailContratos] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/configuracion/empresa')
+      .then(res => res.json())
+      .then(data => {
+        const cfg = data.data?.config || data.config;
+        if (cfg) {
+          setNit(cfg.nit || '');
+          setRepresentanteLegal(cfg.representante_legal || '');
+          setCargoRepresentante(cfg.cargo_representante || '');
+          setDireccion(cfg.direccion || '');
+          setCiudad(cfg.ciudad || '');
+          setDepartamento(cfg.departamento || '');
+          setPais(cfg.pais || 'Colombia');
+          setTelefonoEmpresa(cfg.telefono_empresa || '');
+          setEmailContratos(cfg.email_empresa || '');
+        }
+      })
+      .catch(() => toast.error('Error al cargar datos de empresa'));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/configuracion/empresa', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nit,
+          representante_legal: representanteLegal,
+          cargo_representante: cargoRepresentante,
+          direccion,
+          ciudad,
+          departamento,
+          pais,
+          telefono_empresa: telefonoEmpresa,
+          email_empresa: emailContratos,
+        }),
+      });
+      if (!res.ok) throw new Error('Error al guardar');
+      toast.success('Datos de empresa guardados correctamente');
+    } catch {
+      toast.error('Error al guardar datos de empresa');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Datos de la empresa para contratos</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>NIT</Label>
+            <Input value={nit} onChange={(e) => setNit(e.target.value)} placeholder="900.123.456-7" />
+          </div>
+          <div className="space-y-2">
+            <Label>Representante Legal</Label>
+            <Input value={representanteLegal} onChange={(e) => setRepresentanteLegal(e.target.value)} placeholder="Nombre completo" />
+          </div>
+          <div className="space-y-2">
+            <Label>Cargo del Representante</Label>
+            <Input value={cargoRepresentante} onChange={(e) => setCargoRepresentante(e.target.value)} placeholder="Gerente General" />
+          </div>
+          <div className="space-y-2">
+            <Label>Direccion</Label>
+            <Input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle 100 #15-20, Oficina 301" />
+          </div>
+          <div className="space-y-2">
+            <Label>Ciudad</Label>
+            <Input value={ciudad} onChange={(e) => setCiudad(e.target.value)} placeholder="Bogota" />
+          </div>
+          <div className="space-y-2">
+            <Label>Departamento</Label>
+            <Input value={departamento} onChange={(e) => setDepartamento(e.target.value)} placeholder="Cundinamarca" />
+          </div>
+          <div className="space-y-2">
+            <Label>Pais</Label>
+            <Input value={pais} onChange={(e) => setPais(e.target.value)} placeholder="Colombia" />
+          </div>
+          <div className="space-y-2">
+            <Label>Telefono Empresa</Label>
+            <Input value={telefonoEmpresa} onChange={(e) => setTelefonoEmpresa(e.target.value)} placeholder="+57 601 234 5678" />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label>Email Contratos</Label>
+            <Input type="email" value={emailContratos} onChange={(e) => setEmailContratos(e.target.value)} placeholder="contratos@empresa.com" />
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <Info className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+          <p className="text-sm text-blue-800">
+            Estos datos apareceran pre-llenados en todos los contratos generados por Hirely.
+          </p>
+        </div>
+
+        <Button onClick={handleSave} disabled={saving} className="bg-teal hover:bg-teal/90 text-white">
+          <Save className="h-4 w-4 mr-2" /> {saving ? 'Guardando...' : 'Guardar datos de empresa'}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ConfiguracionPage() {
   const searchParams = useSearchParams();
   const defaultTab = searchParams.get('tab') || 'organizacion';
@@ -33,6 +153,26 @@ function ConfiguracionPage() {
   const [pesoIA, setPesoIA] = useState(40);
   const [pesoHumano, setPesoHumano] = useState(60);
   const [umbral, setUmbral] = useState(60);
+
+  // Organizacion tab state
+  const [orgNombre, setOrgNombre] = useState('');
+  const [orgSlug, setOrgSlug] = useState('');
+  const [orgLogo, setOrgLogo] = useState('');
+  const [orgDiasVencimiento, setOrgDiasVencimiento] = useState(30);
+  const [orgSaving, setOrgSaving] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/configuracion/empresa')
+      .then(res => res.json())
+      .then(data => {
+        const d = data.data || data;
+        const nombre = d.nombre_empresa || '';
+        setOrgNombre(nombre);
+        setOrgSlug(nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''));
+        setOrgLogo(d.logo_url || '');
+      })
+      .catch(() => {});
+  }, []);
 
   // Handle LinkedIn OAuth callback params
   useEffect(() => {
@@ -68,6 +208,9 @@ function ConfiguracionPage() {
           <TabsTrigger value="organizacion">
             <Building className="h-4 w-4 mr-1" /> Organizacion
           </TabsTrigger>
+          <TabsTrigger value="empresa">
+            <Building2 className="h-4 w-4 mr-1" /> Empresa
+          </TabsTrigger>
           <TabsTrigger value="scoring">
             <Sliders className="h-4 w-4 mr-1" /> Scoring
           </TabsTrigger>
@@ -95,26 +238,49 @@ function ConfiguracionPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nombre de la empresa</Label>
-                  <Input defaultValue="Hirely Demo" />
+                  <Input value={orgNombre} onChange={(e) => setOrgNombre(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>Slug</Label>
-                  <Input defaultValue="hirely-demo" disabled />
+                  <Input value={orgSlug} disabled />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Logo URL</Label>
-                <Input placeholder="https://..." />
+                <Input value={orgLogo} onChange={(e) => setOrgLogo(e.target.value)} placeholder="https://..." />
               </div>
               <div className="space-y-2">
                 <Label>Dias de vencimiento de oferta</Label>
-                <Input type="number" defaultValue={30} />
+                <Input type="number" value={orgDiasVencimiento} onChange={(e) => setOrgDiasVencimiento(parseInt(e.target.value) || 30)} />
               </div>
-              <Button className="bg-teal hover:bg-teal/90 text-white">
-                <Save className="h-4 w-4 mr-2" /> Guardar cambios
+              <Button
+                className="bg-teal hover:bg-teal/90 text-white"
+                disabled={orgSaving}
+                onClick={async () => {
+                  setOrgSaving(true);
+                  try {
+                    const res = await fetch('/api/configuracion/empresa', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ nombre_empresa: orgNombre, logo_url: orgLogo }),
+                    });
+                    if (!res.ok) throw new Error();
+                    toast.success('Datos de organizacion guardados');
+                  } catch {
+                    toast.error('Error al guardar');
+                  } finally {
+                    setOrgSaving(false);
+                  }
+                }}
+              >
+                <Save className="h-4 w-4 mr-2" /> {orgSaving ? 'Guardando...' : 'Guardar cambios'}
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="empresa">
+          <EmpresaConfig />
         </TabsContent>
 
         <TabsContent value="scoring">
@@ -216,6 +382,12 @@ function ConfiguracionPage() {
               <CardHeader><CardTitle className="text-base">Plantillas de contratos</CardTitle></CardHeader>
               <CardContent>
                 <PlantillaContratoEditor />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Mapeo tipo → plantilla</CardTitle></CardHeader>
+              <CardContent>
+                <TipoPlantillaMapeo />
               </CardContent>
             </Card>
           </div>
