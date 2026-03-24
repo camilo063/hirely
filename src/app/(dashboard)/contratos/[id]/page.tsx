@@ -10,13 +10,29 @@ import { FirmaStatus } from '@/components/contratos/firma-status';
 import { TableSkeleton } from '@/components/shared/loading-skeleton';
 import { ContratoConDetalles } from '@/lib/types/contrato.types';
 import { toast } from 'sonner';
-import { FileEdit, Eye } from 'lucide-react';
+import { FileEdit, Eye, Info } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function ContratoDetailPage() {
   const params = useParams();
   const [contrato, setContrato] = useState<ContratoConDetalles | null>(null);
   const [loading, setLoading] = useState(true);
   const [firmaLoading, setFirmaLoading] = useState(false);
+  const [confirmarFirmaOpen, setConfirmarFirmaOpen] = useState(false);
+  const [fechaFirma, setFechaFirma] = useState(new Date().toISOString().split('T')[0]);
+  const [notasFirma, setNotasFirma] = useState('');
 
   const fetchContrato = useCallback(async () => {
     try {
@@ -40,15 +56,42 @@ export default function ContratoDetailPage() {
       const res = await fetch(`/api/contratos/${params.id}/firmar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: 'docusign' }),
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success('Contrato enviado para firma');
+        fetchContrato();
+      } else {
+        const errorMsg = data.data?.error || data.error || 'Error enviando contrato para firma';
+        toast.error(errorMsg);
+      }
+    } catch {
+      toast.error('Error de conexion al enviar contrato para firma');
+    } finally {
+      setFirmaLoading(false);
+    }
+  }
+
+  async function handleConfirmarFirma() {
+    setFirmaLoading(true);
+    try {
+      const res = await fetch(`/api/contratos/${params.id}/firmar`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fechaFirma, notas: notasFirma }),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Contrato enviado para firma');
+        toast.success('Contrato firmado. Email de onboarding enviado.');
+        setConfirmarFirmaOpen(false);
+        setNotasFirma('');
         fetchContrato();
+      } else {
+        toast.error(data.error || 'Error confirmando firma');
       }
     } catch {
-      toast.error('Error enviando contrato para firma');
+      toast.error('Error confirmando firma del contrato');
     } finally {
       setFirmaLoading(false);
     }
@@ -104,10 +147,63 @@ export default function ContratoDetailPage() {
             firmaUrl={null}
             firmadoAt={contrato.firmado_at ? String(contrato.firmado_at) : null}
             onEnviarFirma={handleEnviarFirma}
+            onConfirmarFirma={() => setConfirmarFirmaOpen(true)}
             loading={firmaLoading}
           />
         </div>
       </div>
+
+      <AlertDialog open={confirmarFirmaOpen} onOpenChange={setConfirmarFirmaOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar firma bilateral</AlertDialogTitle>
+            <AlertDialogDescription>
+              Confirma que ambas partes (empresa y candidato) han firmado el contrato.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="fechaFirma">Fecha de firma</Label>
+              <Input
+                id="fechaFirma"
+                type="date"
+                value={fechaFirma}
+                onChange={(e) => setFechaFirma(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notasFirma">Notas (opcional)</Label>
+              <Textarea
+                id="notasFirma"
+                placeholder="Agregar notas sobre la firma..."
+                value={notasFirma}
+                onChange={(e) => setNotasFirma(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            <div className="flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
+              <Info className="h-4 w-4 mt-0.5 shrink-0" />
+              <p>
+                Esto disparara automaticamente el email de bienvenida e instrucciones de onboarding para el candidato.
+              </p>
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={firmaLoading}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmarFirma}
+              disabled={firmaLoading || !fechaFirma}
+              className="bg-success hover:bg-success/90 text-white"
+            >
+              {firmaLoading ? 'Confirmando...' : 'Confirmar firma'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

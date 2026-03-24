@@ -10,6 +10,7 @@ import { emailRechazoTemplate, sustituirVariables } from '@/lib/utils/email-temp
 import { enviarParaFirma } from '@/lib/services/firma-electronica.service';
 import { createContrato, autoPoblarDatos } from '@/lib/services/contratos.service';
 import { enviarEmail } from '@/lib/services/email.service';
+import { emailContratadoTemplate } from '@/lib/utils/email-templates';
 
 export async function PATCH(
   request: NextRequest,
@@ -185,6 +186,7 @@ export async function PATCH(
 
     if (nuevoEstado === 'contratado') {
       const candidatoNombre = `${app.candidato_nombre} ${app.candidato_apellido || ''}`.trim();
+      console.log('[CONTRATADO] Iniciando flujo — aplicacion:', id, 'candidato:', candidatoNombre);
 
       // Check double-hire
       try {
@@ -209,75 +211,124 @@ export async function PATCH(
         }
       } catch { /* non-blocking */ }
 
-      // Contract flow
+      // PASO 1: Enviar email de contratado al candidato — SIEMPRE, sin depender del contrato
       try {
-        // 1. Check existing contract
+        if (app.candidato_email) {
+          // Obtener salario y fecha de la aplicacion
+          const datosExtra = await pool.query(
+            `SELECT salario_ofrecido, moneda, fecha_inicio_tentativa FROM aplicaciones WHERE id = $1`,
+            [id]
+          );
+          const extra = datosExtra.rows[0] || {};
+          const salarioFormateado = extra.salario_ofrecido
+            ? `${extra.moneda || 'COP'} ${Number(extra.salario_ofrecido).toLocaleString('es-CO')}`
+            : undefined;
+          const fechaInicio = extra.fecha_inicio_tentativa
+            ? new Date(extra.fecha_inicio_tentativa).toLocaleDateString('es-CO', {
+                day: 'numeric', month: 'long', year: 'numeric',
+              })
+            : undefined;
+
+          const emailData = emailContratadoTemplate({
+            candidatoNombre,
+            vacanteTitulo: app.vacante_titulo,
+            empresaNombre: app.org_nombre,
+            salario: salarioFormateado,
+            fechaInicio,
+          });
+
+          await enviarEmail({
+            to: app.candidato_email,
+            subject: emailData.subject,
+            html: emailData.htmlBody,
+          });
+          console.log('[CONTRATADO] Email enviado a:', app.candidato_email);
+        } else {
+          console.warn('[CONTRATADO] Candidato sin email, no se envio notificacion');
+        }
+      } catch (emailError) {
+        console.error('[CONTRATADO] Error enviando email al candidato:', emailError);
+        // No bloquear el flujo
+      }
+
+      // PASO 2: Crear contrato automatico (no bloquea si falla)
+      try {
         const contratoExistente = await pool.query(
           `SELECT id, estado FROM contratos WHERE aplicacion_id = $1 ORDER BY created_at DESC LIMIT 1`,
           [id]
         );
         let contratoId: string | null = contratoExistente.rows[0]?.id || null;
-        let contratoRecienCreado = false;
 
-        // 2. If no contract, try to create one
         if (!contratoId) {
           try {
-            const tipo = 'laboral';
+            // Determinar tipo de contrato desde la vacante
+            const vacanteTipoResult = await pool.query(
+              `SELECT v.tipo_contrato FROM aplicaciones a JOIN vacantes v ON v.id = a.vacante_id WHERE a.id = $1`,
+              [id]
+            );
+            const vacanteTipoRaw = vacanteTipoResult.rows[0]?.tipo_contrato || 'indefinido';
+            // Buscar slug por nombre o slug exacto
+            const tipoSlugResult = await pool.query(
+              `SELECT slug FROM tipos_contrato WHERE slug = $1 OR LOWER(nombre) = LOWER($1) LIMIT 1`,
+              [vacanteTipoRaw]
+            );
+            const tipo = tipoSlugResult.rows[0]?.slug || vacanteTipoRaw.toLowerCase().replace(/\s+/g, '_');
+
             const datos = await autoPoblarDatos(orgId, id, tipo);
+
+            // Enriquecer con config_empresa si existe
+            try {
+              const orgConfig = await pool.query(
+                `SELECT config_empresa FROM organizations WHERE id = $1`,
+                [orgId]
+              );
+              const configEmpresa = orgConfig.rows[0]?.config_empresa || {};
+              if (configEmpresa.nit) datos.empresa_nit = configEmpresa.nit;
+              if (configEmpresa.representante_legal) datos.empresa_representante = configEmpresa.representante_legal;
+              if (configEmpresa.direccion) datos.empresa_direccion = configEmpresa.direccion;
+              if (configEmpresa.ciudad) datos.ciudad_contrato = configEmpresa.ciudad;
+            } catch { /* non-blocking */ }
+
+            // Buscar plantilla: primero en tabla de mapeo, luego por tipo directo
+            let plantillaId: string | null = null;
+            const mapeoResult = await pool.query(
+              `SELECT m.plantilla_id FROM tipo_plantilla_mapeo m
+               JOIN plantillas_contrato p ON p.id = m.plantilla_id AND p.is_active = true
+               WHERE m.organization_id = $1 AND m.tipo_contrato_slug = $2 LIMIT 1`,
+              [orgId, tipo]
+            );
+            if (mapeoResult.rows.length > 0) {
+              plantillaId = mapeoResult.rows[0].plantilla_id;
+            } else {
+              const plantillaResult = await pool.query(
+                `SELECT id FROM plantillas_contrato WHERE organization_id = $1 AND tipo = $2 AND is_active = true ORDER BY created_at DESC LIMIT 1`,
+                [orgId, tipo]
+              );
+              plantillaId = plantillaResult.rows[0]?.id || null;
+            }
+
             if (Object.keys(datos).length > 0) {
               const contrato = await createContrato(orgId, userId, {
                 aplicacion_id: id,
                 tipo,
+                plantilla_id: plantillaId,
                 datos: datos as import('@/lib/types/contrato.types').DatosContrato,
               });
               contratoId = contrato.id;
-              contratoRecienCreado = true;
-              console.log(`[CONTRATADO] Contrato creado: ${contratoId}`);
+              contratoEnviado = false; // Contrato creado como borrador, admin revisa y envia
+              console.log(`[CONTRATADO] Contrato creado como borrador: ${contratoId}`);
             }
           } catch (err) {
             console.error('[CONTRATADO] Error creando contrato:', err);
           }
-        }
-
-        // 3. Try to send for signature (any contract that exists and isn't already signed)
-        if (contratoId) {
-          const estadoContrato = contratoRecienCreado ? 'borrador' : (contratoExistente.rows[0]?.estado || 'borrador');
-          if (['borrador', 'generado'].includes(estadoContrato)) {
-            try {
-              const firmaResult = await enviarParaFirma(orgId, contratoId);
-              if (firmaResult.success) {
-                contratoEnviado = true;
-                console.log(`[CONTRATADO] Contrato enviado para firma`);
-              } else {
-                contratoWarning = `Contrato creado pero no se pudo enviar para firma: ${firmaResult.error}`;
-                console.warn(`[CONTRATADO] ${contratoWarning}`);
-              }
-            } catch (firmaError) {
-              contratoWarning = 'Contrato creado pero error al enviar para firma. Enviar manualmente desde Contratos.';
-              console.error('[CONTRATADO] Error firma:', firmaError);
-            }
-          } else if (estadoContrato === 'enviado') {
-            contratoEnviado = true; // already sent
-          }
         } else {
-          contratoWarning = 'No se pudo crear el contrato automaticamente. Crea y envia el contrato desde el modulo de Contratos.';
+          console.log(`[CONTRATADO] Contrato ya existia: ${contratoId}`);
         }
 
-        // 4. If contract couldn't be sent, notify admin
-        if (!contratoEnviado && contratoWarning) {
-          try {
-            const adminResult = await pool.query(
-              `SELECT email FROM users WHERE organization_id = $1 AND role = 'admin' AND is_active = true LIMIT 1`,
-              [orgId]
-            );
-            if (adminResult.rows[0]) {
-              await enviarEmail({
-                to: adminResult.rows[0].email,
-                subject: `Accion requerida: contrato pendiente para ${candidatoNombre}`,
-                html: `<div style="font-family:Inter,sans-serif;max-width:600px;margin:0 auto"><div style="background:#0A1F3F;padding:24px;border-radius:8px 8px 0 0"><h2 style="color:white;margin:0">Candidato listo para contratacion</h2></div><div style="background:white;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px"><p style="color:#374151"><strong>${candidatoNombre}</strong> fue marcado como contratado para <strong>${app.vacante_titulo}</strong>.</p><p style="color:#374151">${contratoWarning}</p><p><a href="${process.env.NEXTAUTH_URL || ''}/contratos" style="display:inline-block;background:#00BCD4;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Ir a Contratos</a></p></div></div>`,
-              });
-            }
-          } catch { /* non-blocking */ }
+        if (contratoId) {
+          contratoWarning = null;
+        } else {
+          contratoWarning = 'No se pudo crear el contrato automaticamente. Crealo manualmente desde el modulo de Contratos.';
         }
       } catch (err) {
         console.error('[CONTRATADO] Error general en flujo contrato:', err);
@@ -348,6 +399,7 @@ export async function PATCH(
     const responseData: Record<string, unknown> = { ...result.rows[0] };
     if (warningDobleContratacion) responseData.warning = warningDobleContratacion;
     if (nuevoEstado === 'contratado') {
+      responseData.contratoCreado = !contratoWarning;
       responseData.contratoEnviado = contratoEnviado;
       responseData.contratoWarning = contratoWarning;
     }

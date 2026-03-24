@@ -99,18 +99,18 @@ export function SelectorEstadoAplicacion({
       const data = await res.json();
       if (res.ok && data.success) {
         // Check for contrato feedback
-        if (data.data?.contratoEnviado === true) {
-          toast.success('Candidato contratado', {
-            description: 'Contrato enviado para firma electronica.',
-          });
-        } else if (data.data?.contratoWarning) {
-          toast.warning('Candidato contratado — Accion pendiente', {
-            description: data.data.contratoWarning,
-            duration: 8000,
-          });
-        } else if (data.data?.warning?.tipo === 'doble_contratacion') {
+        if (data.data?.warning?.tipo === 'doble_contratacion') {
           toast.warning('Candidato contratado con advertencia', {
             description: `Este candidato ya esta contratado en: ${data.data.warning.vacantes}. Verifica que esto sea intencional.`,
+            duration: 8000,
+          });
+        } else if (data.data?.contratoCreado === true) {
+          toast.success('Candidato contratado', {
+            description: 'Email enviado al candidato. Contrato generado como borrador — revisalo en Contratos.',
+          });
+        } else if (data.data?.contratoWarning) {
+          toast.warning('Candidato contratado — Revisar contrato', {
+            description: `Email enviado. ${data.data.contratoWarning}`,
             duration: 8000,
           });
         } else {
