@@ -33,13 +33,19 @@ export function ContratoPreview({ contrato, onEstadoChange }: Props) {
     if (!doc) return;
 
     doc.open();
-    doc.write(`
-      <!DOCTYPE html>
-      <html>
-      <head><title>Contrato - ${contrato.candidato_nombre}</title></head>
-      <body>${contrato.contenido_html || '<p>Sin contenido</p>'}</body>
-      </html>
-    `);
+    doc.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Contrato - ${contrato.candidato_nombre}</title>
+  <style>
+    @page { margin: 20mm; size: A4; }
+    body { margin: 0; padding: 0; background: white; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  </style>
+</head>
+<body>${contrato.contenido_html || '<p>Sin contenido</p>'}</body>
+</html>`);
     doc.close();
 
     setTimeout(() => {
@@ -48,11 +54,33 @@ export function ContratoPreview({ contrato, onEstadoChange }: Props) {
   };
 
   const handleDownloadHtml = () => {
-    const blob = new Blob([contrato.contenido_html || ''], { type: 'text/html' });
+    const htmlCompleto = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Contrato - ${contrato.candidato_nombre || 'Candidato'}</title>
+  <style>
+    @media print {
+      body { margin: 0; }
+      .no-print { display: none !important; }
+    }
+    @page { margin: 20mm; size: A4; }
+    body { background: white; margin: 0; padding: 0; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="background:#0A1F3F;color:white;padding:12px 20px;font-family:sans-serif;font-size:13px;text-align:center;">
+    Para guardar como PDF: usa Ctrl+P (o Cmd+P) → "Guardar como PDF"
+  </div>
+  ${contrato.contenido_html || '<p>Sin contenido</p>'}
+</body>
+</html>`;
+    const blob = new Blob([htmlCompleto], { type: 'text/html; charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `contrato_${contrato.candidato_nombre?.replace(/\s/g, '_')}.html`;
+    a.download = `contrato_${contrato.candidato_nombre?.replace(/\s/g, '_')}_v${contrato.version || 1}.html`;
     a.click();
     URL.revokeObjectURL(url);
   };
