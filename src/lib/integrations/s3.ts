@@ -13,9 +13,10 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
 
 // ─── CONFIG ──────────────────────────────────
 
@@ -119,6 +120,70 @@ export async function checkS3Health(): Promise<{ status: 'ok' | 'error'; region:
       message,
     };
   }
+}
+
+// ─── PRESIGNED URL UTILITIES ─────────────────
+
+/**
+ * Extract a clean S3 key from any storage reference format:
+ * - "s3://empleo-nivelics/uuid/documentos/uuid/file.pdf" → "uuid/documentos/uuid/file.pdf"
+ * - "uuid/documentos/uuid/file.pdf" → "uuid/documentos/uuid/file.pdf"
+ * - "https://s3.amazonaws.com/bucket/..." → extracts the path
+ */
+export function extractS3Key(rawRef: string): string {
+  if (rawRef.startsWith('s3://')) {
+    return rawRef.replace(`s3://${BUCKET_NAME}/`, '').replace(/^s3:\/\/[^/]+\//, '');
+  }
+  if (rawRef.startsWith('https://')) {
+    const url = new URL(rawRef);
+    return url.pathname.replace(/^\//, '');
+  }
+  return rawRef;
+}
+
+/**
+ * Generate a presigned URL for direct upload from the browser.
+ */
+export async function getPresignedUploadUrl(
+  key: string,
+  contentType: string,
+  expiresInSeconds: number = 900
+): Promise<string> {
+  const client = getClient();
+  const command = new PutObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+    ContentType: contentType,
+  });
+  return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
+}
+
+/**
+ * Check if an object exists in S3 without downloading it.
+ */
+export async function objectExists(keyOrRef: string): Promise<boolean> {
+  try {
+    const client = getClient();
+    const key = extractS3Key(keyOrRef);
+    await client.send(new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve a stored URL reference to an accessible URL.
+ * - s3:// references → presigned download URL
+ * - local paths or http URLs → returned as-is
+ */
+export async function resolveUrl(urlOrRef: string, expiresInSeconds: number = 3600): Promise<string> {
+  if (!urlOrRef) return urlOrRef;
+  if (urlOrRef.startsWith('s3://')) {
+    const key = extractS3Key(urlOrRef);
+    return getSignedDownloadUrl(key, expiresInSeconds);
+  }
+  return urlOrRef;
 }
 
 // ─── KEY BUILDER ─────────────────────────────

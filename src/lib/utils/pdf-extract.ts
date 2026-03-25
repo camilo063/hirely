@@ -14,10 +14,23 @@ export async function pdfToBase64(filePath: string): Promise<string> {
 }
 
 /**
- * Convierte un PDF a base64 desde una URL (HTTP) o un path local (/uploads/...).
- * Detecta automaticamente si es un path local o una URL remota.
+ * Convierte un PDF a base64 desde una URL (HTTP), path local (/uploads/...),
+ * o referencia S3 (s3://...).
+ * Detecta automaticamente el tipo y resuelve presigned URLs para S3.
  */
 export async function pdfUrlToBase64(url: string): Promise<string> {
+  // S3 reference: resolve to presigned URL first
+  if (url.startsWith('s3://')) {
+    const { resolveUrl } = await import('@/lib/integrations/s3');
+    const presignedUrl = await resolveUrl(url);
+    const response = await fetch(presignedUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch PDF from S3: ${response.status}`);
+    }
+    const buffer = await response.arrayBuffer();
+    return Buffer.from(buffer).toString('base64');
+  }
+
   // Path local: /uploads/... o ruta relativa sin protocolo
   if (url.startsWith('/') && !url.startsWith('//')) {
     const localPath = resolve(process.cwd(), 'public', url.replace(/^\//, ''));

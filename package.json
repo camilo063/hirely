@@ -19,6 +19,8 @@
     "test:integrations": "tsx src/lib/tests/verify-integrations.ts",
     "db:reset": "tsx src/lib/db/reset.ts",
     "test:entrevista": "tsx src/lib/tests/test-flujo-entrevista.ts",
+    "test:s3": "tsx src/lib/tests/test-s3-presign.ts",
+    "audit:s3": "tsx src/lib/tests/audit-s3-complete.ts",
     "seed:preguntas": "tsx src/lib/db/seeds/preguntas-iniciales.ts"
   },
   "dependencies": {

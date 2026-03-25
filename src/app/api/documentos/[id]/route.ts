@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId, getUserId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { verificarDocumento, getChecklistDocumentos } from '@/lib/services/seleccion.service';
+import { resolveUrl } from '@/lib/integrations/s3';
 
 // PATCH /api/documentos/[id] — Verificar o rechazar documento
 export async function PATCH(
@@ -42,7 +43,16 @@ export async function GET(
     const { id } = await params;
 
     const result = await getChecklistDocumentos(id, orgId);
-    return apiResponse(result);
+
+    // Resolve s3:// URLs to presigned download URLs
+    const documentosResolved = await Promise.all(
+      result.documentos.map(async (doc) => ({
+        ...doc,
+        url: doc.url ? await resolveUrl(doc.url) : doc.url,
+      }))
+    );
+
+    return apiResponse({ ...result, documentos: documentosResolved });
   } catch (error) {
     return apiError(error);
   }
