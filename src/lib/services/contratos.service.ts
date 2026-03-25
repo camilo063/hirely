@@ -47,18 +47,32 @@ export async function listContratos(
 }
 
 export async function getContrato(orgId: UUID, contratoId: UUID): Promise<ContratoConDetalles> {
-  const result = await pool.query<ContratoConDetalles>(
+  const result = await pool.query<ContratoConDetalles & { plantilla_html?: string }>(
     `SELECT ct.*,
       c.nombre as candidato_nombre, COALESCE(c.apellido, '') as candidato_apellido, c.email as candidato_email,
-      v.titulo as vacante_titulo
+      v.titulo as vacante_titulo,
+      pc.contenido_html as plantilla_html
     FROM contratos ct
     LEFT JOIN candidatos c ON ct.candidato_id = c.id
     LEFT JOIN vacantes v ON ct.vacante_id = v.id
+    LEFT JOIN plantillas_contrato pc ON pc.id = ct.plantilla_id
     WHERE ct.id = $1 AND ct.organization_id = $2`,
     [contratoId, orgId]
   );
   if (result.rows.length === 0) throw new NotFoundError('Contrato', contratoId);
-  return result.rows[0];
+
+  const contrato = result.rows[0];
+
+  // Re-renderizar desde plantilla real + datos actuales para garantizar consistencia
+  if (contrato.plantilla_html && contrato.datos_contrato) {
+    const datos = typeof contrato.datos_contrato === 'string'
+      ? JSON.parse(contrato.datos_contrato)
+      : contrato.datos_contrato;
+    contrato.contenido_html = renderPlantillaContrato(contrato.plantilla_html, datos as Record<string, unknown>);
+    delete (contrato as unknown as Record<string, unknown>).plantilla_html;
+  }
+
+  return contrato;
 }
 
 // ─── AUTO-POPULATE ───────────────────────────────
