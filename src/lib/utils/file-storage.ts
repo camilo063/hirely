@@ -11,7 +11,7 @@
 
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import path from 'path';
-import { isS3Configured, uploadToS3, deleteFromS3, getSignedDownloadUrl, buildS3Key } from '@/lib/integrations/s3';
+import { isS3Configured, uploadToS3, deleteFromS3, getSignedDownloadUrl, buildS3Key, extractS3Key } from '@/lib/integrations/s3';
 
 const UPLOADS_DIR = path.join(process.cwd(), 'public', 'uploads', 'documentos');
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -125,7 +125,7 @@ export async function deleteFile(urlOrKey: string): Promise<void> {
  */
 export async function getDownloadUrl(urlOrKey: string): Promise<string> {
   if (urlOrKey.startsWith('s3://') && useS3) {
-    const key = urlOrKey.replace(/^s3:\/\/[^/]+\//, '');
+    const key = extractS3Key(urlOrKey);
     return getSignedDownloadUrl(key);
   }
   // Local or http URLs pass through

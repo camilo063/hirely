@@ -4,6 +4,7 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
 import { addDocumentoOnboarding } from '@/lib/services/onboarding.service';
 import { saveFile, validateFile } from '@/lib/utils/file-storage';
+import { resolveUrl } from '@/lib/integrations/s3';
 
 // GET — Listar documentos de onboarding de la org
 export async function GET() {
@@ -19,7 +20,15 @@ export async function GET() {
       [orgId]
     );
 
-    return apiResponse(result.rows);
+    // Resolve s3:// URLs to presigned download URLs
+    const rows = await Promise.all(
+      result.rows.map(async (row) => ({
+        ...row,
+        url: row.url ? await resolveUrl(row.url) : row.url,
+      }))
+    );
+
+    return apiResponse(rows);
   } catch (error) {
     return apiError(error);
   }

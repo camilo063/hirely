@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { sincronizarEstadoFirma, descargarDocumentoFirmado } from '@/lib/services/firma-electronica.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { resolveUrl } from '@/lib/integrations/s3';
 
 // GET /api/contratos/[id]/firma — consultar estado de firma
 export async function GET(
@@ -21,7 +22,9 @@ export async function GET(
       if (!result.success) {
         return apiResponse({ success: false, error: result.error }, 400);
       }
-      return apiResponse({ success: true, url: result.url });
+      // Resolve s3:// URL to presigned download URL
+      const url = result.url ? await resolveUrl(result.url) : result.url;
+      return apiResponse({ success: true, url });
     }
 
     const estado = await sincronizarEstadoFirma(id, orgId);
