@@ -55,26 +55,79 @@ export default function PortalDocumentosPage() {
   async function handleUpload(doc: DocumentoConLabel, file: File) {
     setUploadingTipo(doc.tipo);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('tipo', doc.tipo);
-      formData.append('documento_id', doc.id);
-
-      const res = await fetch(`/api/portal/documentos/${token}/upload`, {
+      // Step 1: Get presigned upload URL from server (small JSON request)
+      const presignRes = await fetch(`/api/portal/documentos/${token}/presign`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo: doc.tipo,
+          documento_id: doc.id,
+          filename: file.name,
+          contentType: file.type || 'application/octet-stream',
+          fileSize: file.size,
+        }),
       });
-      const json = await res.json();
+      const presignData = await presignRes.json();
 
-      if (!res.ok) {
-        alert(json.error || 'Error subiendo archivo');
+      if (!presignRes.ok) {
+        alert(presignData.error || 'Error preparando subida');
+        return;
+      }
+
+      // Fallback: S3 not configured, use old FormData upload (local dev)
+      if (presignData.useFormData) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('tipo', doc.tipo);
+        formData.append('documento_id', doc.id);
+
+        const res = await fetch(`/api/portal/documentos/${token}/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          alert(json.error || 'Error subiendo archivo');
+          return;
+        }
+        await fetchPortalData();
+        return;
+      }
+
+      // Step 2: Upload file directly to S3 (bypasses Vercel 4.5MB limit)
+      const uploadRes = await fetch(presignData.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        alert('Error subiendo archivo a almacenamiento. Intente de nuevo.');
+        return;
+      }
+
+      // Step 3: Confirm upload in our server (small JSON request)
+      const confirmRes = await fetch(`/api/portal/documentos/${token}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo: doc.tipo,
+          documento_id: doc.id,
+          filename: file.name,
+          s3Url: presignData.s3Url,
+        }),
+      });
+      const confirmData = await confirmRes.json();
+
+      if (!confirmRes.ok) {
+        alert(confirmData.error || 'Error confirmando subida');
         return;
       }
 
       // Refresh data
       await fetchPortalData();
     } catch {
-      alert('Error de conexion');
+      alert('Error de conexion. Verifique su internet e intente de nuevo.');
     } finally {
       setUploadingTipo(null);
     }
