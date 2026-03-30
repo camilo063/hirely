@@ -7,7 +7,7 @@ Plataforma SaaS multi-tenant de reclutamiento y seleccion de personal, construid
 | Capa | Tecnologia |
 |------|-----------|
 | Frontend | Next.js 14 (App Router) + TypeScript + Tailwind CSS |
-| UI | shadcn/ui (27 componentes base + 74 componentes de dominio) |
+| UI | shadcn/ui (28 componentes base + 76 componentes de dominio) |
 | Auth | NextAuth.js v5 (Credentials + JWT) |
 | Base de datos | PostgreSQL 16 (Docker) |
 | Validacion | Zod 4.3 |
@@ -16,7 +16,9 @@ Plataforma SaaS multi-tenant de reclutamiento y seleccion de personal, construid
 | Charts | Recharts 3.7 |
 | Email | Resend (emails transaccionales) |
 | Firma electronica | SignWell (produccion) / mock (desarrollo) |
+| Storage | AWS S3 (produccion, presigned URLs) / local filesystem (desarrollo) |
 | Integraciones | LinkedIn OAuth, Dapta (voz IA), Google Calendar + Meet |
+| Deploy | Vercel (serverless) + Docker (alternativo) |
 
 ## Inicio Rapido
 
@@ -77,13 +79,14 @@ src/
 │   │   └── vacantes/        # Vacantes y pipeline
 │   ├── (public)/            # Portal publico de empleo
 │   │   └── empleo/[slug]/   # Pagina publica de vacante + aplicacion
-│   ├── api/                 # 83 rutas API REST
+│   ├── api/                 # 90 rutas API REST
 │   ├── auth/                # Flujos OAuth LinkedIn
 │   ├── evaluacion/[token]/  # Formulario publico de evaluacion tecnica
 │   └── portal/              # Portal publico de documentos
-├── components/              # 99 componentes React
+├── components/              # 104 componentes React
 │   ├── candidatos/          # Score badge, CV view, kanban, pipeline
 │   ├── contratos/           # Editor, preview, firma, plantillas, versiones
+│   ├── documents/           # S3DocumentViewer (preview/descarga de archivos S3)
 │   ├── entrevistas/         # Trigger IA, evaluacion humana, scoring
 │   ├── evaluaciones/        # Banco preguntas, plantillas, formularios, anti-cheating, proctoring
 │   ├── layout/              # Sidebar, header, breadcrumbs, mobile-nav
@@ -91,24 +94,26 @@ src/
 │   ├── portal/              # Aplicacion publica, documentos
 │   ├── seleccion/           # Seleccionar, rechazar, documentos
 │   ├── shared/              # Data table, empty state, confirm dialog, loading
-│   ├── ui/                  # 27 shadcn/ui components
+│   ├── ui/                  # 28 shadcn/ui components
 │   └── vacantes/            # Card, form, status selector, LinkedIn publisher
-├── hooks/                   # 8 custom hooks (useDebounce, useCandidatos, useVacantes, useLinkedin, useToast, useReportes, useReveal, useTiposContrato)
+├── hooks/                   # 9 custom hooks (useDebounce, useCandidatos, useVacantes, useLinkedin, useToast, useReportes, useReveal, useTiposContrato, useS3Url)
 ├── lib/
 │   ├── auth/                # NextAuth config + API middleware helpers
 │   ├── db/                  # Pool de conexion + 24 migraciones SQL
 │   │   ├── migrations/      # 001-024 migraciones
 │   │   └── seeds/           # Preguntas iniciales de evaluacion
-│   ├── integrations/        # Clientes externos (Anthropic, Dapta, LinkedIn, Resend, SignWell, Google Calendar)
+│   ├── integrations/        # Clientes externos (Anthropic, Dapta, LinkedIn, Resend, SignWell, Google Calendar, AWS S3)
+│   │   ├── firma/           # Provider swappable: SignWell, DocuSign, mock
+│   │   └── s3.ts            # Cliente S3: upload, download, presigned URLs, extractS3Key, objectExists
 │   ├── services/            # 27 servicios de logica de negocio
 │   ├── types/               # 12 archivos de tipos TypeScript
-│   ├── utils/               # 12 utilidades (API response, errors, constants, design tokens, email templates, etc.)
+│   ├── utils/               # 12 utilidades (API response, errors, constants, design tokens, email templates, file-storage, pdf-extract, etc.)
 │   ├── validations/         # 6 schemas Zod
-│   └── tests/               # Tests de integracion
+│   └── tests/               # 8 tests de integracion
 └── middleware.ts            # Edge middleware (proteccion de rutas)
 ```
 
-**Totales:** 320+ archivos TypeScript/TSX, 101 componentes, 87 endpoints API, 27 servicios, 24 migraciones
+**Totales:** 331 archivos TypeScript/TSX, 104 componentes, 90 endpoints API, 27 servicios, 24 migraciones
 
 ---
 
@@ -305,7 +310,8 @@ src/
 - Checklist de documentos requeridos (configurable por organizacion desde `/configuracion`)
 - Portal publico `/portal/documentos/[token]` basado en token unico:
   - El candidato ve los documentos requeridos
-  - Sube archivos (PDF, imagenes) directamente
+  - Sube archivos (PDF, imagenes) directamente a S3 via presigned URLs
+  - Fallback a upload via servidor para desarrollo local
   - Tracking de progreso de completitud
 - Pestana "Docs" en el panel lateral del candidato seleccionado
 - Indicadores en kanban: badge "Docs completos" / "Docs pendientes"
@@ -315,9 +321,11 @@ src/
 **API Routes:**
 - `POST /api/seleccion` — marcar como seleccionado/rechazado
 - `GET /api/configuracion/checklist` — checklist de documentos
-- `GET /api/portal/documentos/[token]` — portal publico
-- `POST /api/portal/documentos/[token]/upload` — subir documentos
-- `GET/DELETE /api/documentos/[id]` — operaciones de archivos
+- `GET /api/portal/documentos/[token]` — portal publico (URLs resueltas a presigned)
+- `POST /api/portal/documentos/[token]/upload` — subir documentos (fallback local)
+- `POST /api/portal/documentos/[token]/presign` — obtener presigned upload URL para S3
+- `POST /api/portal/documentos/[token]/confirm` — confirmar subida directa a S3 y actualizar BD
+- `GET/DELETE /api/documentos/[id]` — operaciones de archivos (URLs resueltas a presigned)
 
 ---
 
@@ -344,7 +352,7 @@ src/
 - Configuracion:
   - Editor de plantilla HTML con panel de variables y vista previa
   - Plantillas de email editables para seleccion, rechazo y onboarding
-  - Documentos adjuntos de onboarding (archivos o links)
+  - Documentos adjuntos de onboarding (archivos o links, URLs resueltas a presigned)
 - Panel de estado en el detalle del candidato contratado
 - Selector de lider directo al contratar
 
@@ -356,7 +364,7 @@ src/
 - `POST /api/onboarding/[id]/enviar-email` — enviar/reenviar email
 - `POST /api/onboarding/procesar-programados` — cron batch
 - `GET/PUT /api/configuracion/onboarding` — configuracion de plantilla
-- `GET/POST /api/configuracion/onboarding/documentos` — docs adjuntos
+- `GET/POST /api/configuracion/onboarding/documentos` — docs adjuntos (URLs resueltas a presigned)
 - `DELETE /api/configuracion/onboarding/documentos/[id]` — eliminar doc
 - `GET/PATCH /api/configuracion/emails` — plantillas de email editables (seleccion, rechazo, onboarding)
 
@@ -397,6 +405,7 @@ src/
   - `SIGNWELL_TEST_MODE=false` en `.env.local` para envio real de emails
   - Confirmar firma bilateral: dialog con fecha y notas, dispara email de onboarding automatico
   - Al confirmar firma: contrato -> firmado, crea registro onboarding, envia email al candidato
+  - PDF firmado almacenado en S3 (URLs resueltas a presigned para descarga)
 - Dashboard de contratos:
   - Cards de resumen: borradores, generados, en firma, firmados
   - Tabla filtrable por estado, tipo y busqueda
@@ -406,12 +415,12 @@ src/
 
 **API Routes:**
 - `GET/POST /api/contratos` — listar (con filtros) y crear
-- `GET/PUT /api/contratos/[id]` — detalle y actualizar
+- `GET/PUT /api/contratos/[id]` — detalle y actualizar (URLs resueltas a presigned)
 - `GET /api/contratos/[id]/versiones` — historial de versiones
 - `POST /api/contratos/[id]/regenerar` — regenerar HTML desde plantilla (refresca datos empresa)
 - `POST /api/contratos/[id]/firmar` — enviar para firma electronica (SignWell)
 - `PATCH /api/contratos/[id]/firmar` — confirmar firma bilateral + trigger onboarding
-- `GET /api/contratos/[id]/firma` — consultar estado de firma + descargar PDF
+- `GET /api/contratos/[id]/firma` — consultar estado de firma + descargar PDF (URL resuelta a presigned)
 - `GET /api/contratos/auto-poblar` — auto-poblar datos del candidato
 - `GET/PATCH /api/configuracion/empresa` — config global de empresa (nombre, logo, NIT, representante, etc.)
 - `GET/POST/DELETE /api/configuracion/tipo-plantilla-mapeo` — mapeo tipo contrato -> plantilla
@@ -458,6 +467,45 @@ src/
 
 ---
 
+### Modulo 11: Almacenamiento S3 + Presigned URLs
+
+**No tiene pagina propia** — es transversal a todos los modulos que manejan archivos.
+
+- **Cliente S3** (`src/lib/integrations/s3.ts`):
+  - Upload, download, delete de archivos
+  - Presigned URLs para descarga (1h expiry) y upload (15min expiry)
+  - `extractS3Key()` — normaliza cualquier formato de referencia S3
+  - `resolveUrl()` — convierte `s3://` a presigned URL, pasa URLs locales/HTTP sin cambio
+  - `objectExists()` — verifica existencia via HeadObject
+  - Keys multi-tenant: `{orgId}/{entity}/{entityId}/{filename}`
+- **Abstraccion de storage** (`src/lib/utils/file-storage.ts`):
+  - Auto-detecta S3 (produccion) vs filesystem local (desarrollo)
+  - Validacion: max 10MB, tipos permitidos (PDF, JPG, PNG, DOC, DOCX)
+- **Upload directo a S3** desde el browser (bypasses Vercel 4.5MB body limit):
+  1. Cliente pide presigned upload URL al servidor (JSON, ~200 bytes)
+  2. Cliente hace PUT directo a S3 con el archivo (sin pasar por Vercel)
+  3. Cliente confirma al servidor y se actualiza la BD (JSON, ~200 bytes)
+  - Fallback automatico a upload via FormData para desarrollo local
+- **Resolucion server-side**: todas las API routes que retornan URLs de archivos resuelven `s3://` a presigned URLs antes de enviar al cliente
+- **Hook React** `useS3Url()` para resolucion client-side cuando se necesite
+- **Componente** `S3DocumentViewer` para preview/descarga de documentos S3
+- **Validacion cross-tenant**: el endpoint `/api/s3/presign` verifica que la key pertenece a la organizacion del usuario
+- **CORS requerido** en el bucket S3 para upload directo desde browser
+
+**API Routes:**
+- `POST /api/s3/presign` — generar presigned URL (download/upload) con validacion de org
+- `POST /api/upload` — upload general via servidor (authenticated)
+- `GET /api/health/s3` — health check de conectividad S3
+
+**Archivos clave:**
+- `src/lib/integrations/s3.ts` — cliente S3 con todas las operaciones
+- `src/lib/utils/file-storage.ts` — abstraccion S3/local
+- `src/hooks/use-s3-url.ts` — hook React para resolver URLs
+- `src/components/documents/s3-document-viewer.tsx` — componente viewer
+- `scripts/configure-s3-cors.sh` — configurar CORS en bucket S3
+
+---
+
 ## Maquinas de Estado
 
 ```
@@ -489,7 +537,7 @@ EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada
  5. Agendar entrevista humana (Google Calendar + Meet) -> Evaluacion -> Score Humano
  6. Scoring Dual (ATS + Tecnico + IA + Humano) -> Ranking final
  7. Seleccionar candidato -> Auto-avance a documentos_pendientes
- 8. Solicitar documentos (portal publico con token) -> Verificar completitud
+ 8. Solicitar documentos (portal publico con token) -> Upload directo a S3 -> Verificar completitud
  9. Marcar contratado ->
     a. Email de felicitaciones al candidato (automatico, desacoplado del contrato)
     b. Creacion automatica de contrato borrador (plantilla segun tipo de vacante + datos empresa)
@@ -540,10 +588,11 @@ EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada
 - **aplicaciones** — pipeline candidato-vacante con 5 scores (ATS, IA, humano, tecnico, final)
 - **entrevistas_ia** — entrevistas con Dapta (transcripcion, analisis JSONB)
 - **entrevistas_humanas** — entrevistas presenciales/virtuales con evaluacion
-- **contratos** — contratos generados con versionamiento
+- **contratos** — contratos generados con versionamiento y firma digital
 - **contrato_versiones** — historial de cambios con autor
 - **plantillas_contrato** — plantillas HTML por tipo de contrato
 - **onboarding** — registros de onboarding con tracking de email
+- **documentos_candidato** — documentos subidos por candidatos (URL en S3 o local)
 - **documentos_onboarding** — documentos requeridos por organizacion
 - **org_settings** — configuracion por organizacion (email, scoring, portal, onboarding, plantillas email)
 - **linkedin_tokens** — tokens OAuth LinkedIn
@@ -556,6 +605,7 @@ EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada
 - **tipos_contrato** — tipos de contrato configurables (15 registros seed)
 - **tipo_plantilla_mapeo** — mapeo admin: tipo de contrato -> plantilla a usar (UNIQUE org + tipo)
 - **terminaciones_contrato** — registro de terminaciones con motivo, detalle y fecha
+- **portal_tokens** — tokens unicos para portal publico de documentos (expiran en 30 dias)
 - **activity_log** — auditoria de acciones
 
 ---
@@ -567,10 +617,10 @@ EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada
 | **Claude AI (Anthropic)** | CV parsing, analisis de entrevistas, generacion de preguntas, scoring de respuestas abiertas | Funcional |
 | **Dapta** | Entrevistas telefonicas con agente de voz IA + webhook | Funcional |
 | **Resend** | Emails transaccionales (invitaciones, seleccion, rechazo, onboarding) | Funcional |
-| **SignWell** | Firma electronica de contratos + webhook | Funcional |
+| **SignWell** | Firma electronica bilateral de contratos + webhook | Funcional |
 | **Google Calendar** | Agendamiento de entrevistas + Meet links | Funcional |
 | **LinkedIn** | OAuth, publicar vacantes, sync aplicantes | Requiere API key |
-| **AWS S3** | Almacenamiento de archivos | Placeholder (usa local en dev) |
+| **AWS S3** | Almacenamiento de archivos con presigned URLs + upload directo desde browser | Funcional |
 
 ---
 
@@ -592,7 +642,7 @@ Variables opcionales por integracion:
 - **Email:** `RESEND_API_KEY`, `RESEND_FROM_EMAIL`
 - **Firma electronica:** `FIRMA_PROVIDER` (signwell|mock), `SIGNWELL_API_KEY`, `SIGNWELL_API_URL`, `SIGNWELL_TEST_MODE` (true|false, default true)
 - **Google:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
-- **Storage:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `AWS_REGION`
+- **Storage:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `AWS_REGION` (default us-east-1)
 - **App:** `APP_URL` (para webhooks de firma)
 
 ## Docker
@@ -615,15 +665,39 @@ docker exec hirely-db psql -U hirely_user -d hirely -f /tmp/m.sql
 ## Scripts
 
 ```bash
-npm run dev       # Servidor de desarrollo (puerto 3500)
-npm run build     # Build de produccion
-npm run start     # Iniciar build de produccion
-npm run lint      # Ejecutar ESLint
-npm run db:migrate  # Ejecutar migraciones
-npm run db:seed     # Seed de datos
+npm run dev              # Servidor de desarrollo (puerto 3500)
+npm run build            # Build de produccion
+npm run start            # Iniciar build de produccion
+npm run lint             # Ejecutar ESLint
+npm run db:migrate       # Ejecutar migraciones
+npm run db:seed          # Seed de datos
+npm run test:s3          # Test presigned URLs S3
+npm run audit:s3         # Auditoria completa S3 (campos BD, URLs, conectividad)
+npm run seed:preguntas   # Seed preguntas de evaluacion
 ```
 
 ## Changelog
+
+### 2026-03-27 — Integracion AWS S3 + Presigned URLs
+
+- **Upload directo a S3**: El portal de documentos ahora sube archivos directamente a S3 desde el browser via presigned URLs, evitando el limite de 4.5MB de Vercel serverless functions
+- **Flujo de upload en 3 pasos**: presign (JSON) -> PUT directo a S3 -> confirm (JSON) — ninguna request excede unos KB al servidor
+- **Fallback automatico**: En desarrollo local sin S3 configurado, usa el upload via FormData al servidor
+- **Presigned URLs server-side**: Todas las API routes que retornan URLs de archivos (`candidatos`, `documentos`, `contratos`, `onboarding`, `portal`) resuelven `s3://` a presigned URLs antes de enviar al cliente
+- **Nuevas utilidades S3**: `extractS3Key()`, `getPresignedUploadUrl()`, `objectExists()`, `resolveUrl()` en `s3.ts`
+- **Hook `useS3Url()`**: Para componentes React que necesiten resolver URLs S3 client-side
+- **Componente `S3DocumentViewer`**: Preview y descarga de archivos almacenados en S3 (imagenes, PDFs)
+- **Endpoint `/api/s3/presign`**: Genera presigned URLs con validacion cross-tenant (verifica organizacion)
+- **Fix `pdfUrlToBase64()`**: Ahora maneja URLs `s3://` para CV parsing y scoring pipeline
+- **Auditoria S3 completa**: Script `npm run audit:s3` verifica todos los campos de archivos en BD, conectividad, y referencias huerfanas
+- **CORS bucket S3**: Script `scripts/configure-s3-cors.sh` para configurar CORS en el bucket
+
+### 2026-03-25 — Integracion AWS S3 base
+
+- **feat(s3)**: Integracion AWS S3 para almacenamiento de archivos en produccion
+- Storage multi-tenant con keys: `{orgId}/{entity}/{entityId}/{filename}`
+- Abstraccion `file-storage.ts` que auto-detecta S3 vs local
+- Health check endpoint `/api/health/s3`
 
 ### 2026-03-24 — Flujo completo de contratacion
 
@@ -658,6 +732,8 @@ Configurado para **Vercel** con:
 - Edge middleware para autenticacion
 - Variables de entorno en Vercel Dashboard
 - Output standalone para Docker deployment alternativo
+- Upload de archivos via presigned URLs (evita limite 4.5MB de serverless functions)
+- CORS configurado en bucket S3 para upload directo desde browser
 
 ## Estado del MVP
 
@@ -690,13 +766,11 @@ Configurado para **Vercel** con:
 - Integracion LinkedIn (OAuth, publicacion, sync)
 - Portal publico de empleo
 - Reportes y Analytics: pipeline (funnel, tiempos, volumen, scores) + integridad de evaluaciones
-- 27 componentes shadcn/ui + 74 de dominio
-- 87 endpoints API REST
+- AWS S3 storage con presigned URLs (upload directo desde browser, resolucion server-side)
+- 28 componentes shadcn/ui + 76 de dominio
+- 90 endpoints API REST
 - 27 servicios de logica de negocio
 - 24 migraciones SQL
-
-### Parcialmente implementado
-- AWS S3 storage (usa `/public/uploads/` en dev)
 
 ### Pendiente
 - Colaboracion en equipo (comentarios, menciones)
