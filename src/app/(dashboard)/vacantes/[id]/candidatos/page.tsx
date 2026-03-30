@@ -6,6 +6,7 @@ import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { PipelineCompleto } from '@/components/candidatos/pipeline-completo';
 import { TableSkeleton } from '@/components/shared/loading-skeleton';
 import type { Vacante } from '@/lib/types/vacante.types';
+import { SiguientePasoSugerido } from '@/components/vacantes/SiguientePasoSugerido';
 import { toast } from 'sonner';
 
 export default function VacantePipelinePage() {
@@ -38,6 +39,7 @@ export default function VacantePipelinePage() {
         <h1 className="text-2xl font-bold text-navy">Pipeline de candidatos</h1>
         <p className="text-sm text-muted-foreground">{vacante.titulo}</p>
       </div>
+      <SiguientePasoSugerido vacanteId={params.id as string} />
       <PipelineCompleto
         vacanteId={params.id as string}
         vacanteTitulo={vacante.titulo}
