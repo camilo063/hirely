@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Loader2, Upload, X, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,7 +58,23 @@ export function AplicacionForm({
   const [habilidades, setHabilidades] = useState<string[]>([]);
   const [habilidadInput, setHabilidadInput] = useState('');
   const [carta, setCarta] = useState('');
+  const [experienciaAnos, setExperienciaAnos] = useState('');
+  const [nivelEducativo, setNivelEducativo] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Visual-only progress (does not affect logic)
+  const pasoActual = useMemo(() => {
+    if (cvFile) return 3;
+    // Require both dropdowns selected AND at least 1 skill
+    if (experienciaAnos && nivelEducativo && habilidades.length > 0) return 2;
+    return 1;
+  }, [cvFile, experienciaAnos, nivelEducativo, habilidades]);
+
+  const pasos = [
+    { numero: 1, label: 'Datos personales' },
+    { numero: 2, label: 'Perfil profesional' },
+    { numero: 3, label: 'Documentos y mensaje' },
+  ];
 
   // Auto-save to localStorage
   useEffect(() => {
@@ -75,6 +91,8 @@ export function AplicacionForm({
           if (data.nombre) setNombre(data.nombre);
           if (data.habilidades) setHabilidades(data.habilidades);
           if (data.carta_presentacion) setCarta(data.carta_presentacion);
+          if (data.experiencia_anos) setExperienciaAnos(data.experiencia_anos);
+          if (data.nivel_educativo) setNivelEducativo(data.nivel_educativo);
         }
       } catch { /* ignore */ }
     }
@@ -169,6 +187,33 @@ export function AplicacionForm({
         </div>
       )}
 
+      {/* Progress bar (visual only) */}
+      <div className="flex items-center mb-2">
+        {pasos.map((paso, i) => (
+          <React.Fragment key={paso.numero}>
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
+                pasoActual >= paso.numero
+                  ? 'bg-[#00BCD4] text-white'
+                  : 'bg-gray-100 text-gray-400'
+              }`}>
+                {pasoActual > paso.numero ? '\u2713' : paso.numero}
+              </div>
+              <span className={`text-xs hidden sm:block ${
+                pasoActual >= paso.numero ? 'text-gray-700 font-medium' : 'text-gray-400'
+              }`}>
+                {paso.label}
+              </span>
+            </div>
+            {i < pasos.length - 1 && (
+              <div className={`flex-1 h-0.5 mx-2 transition-colors ${
+                pasoActual > paso.numero ? 'bg-[#00BCD4]' : 'bg-gray-100'
+              }`} />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+
       {/* Section 1: Personal data */}
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-navy uppercase tracking-wide">Datos personales</h3>
@@ -207,6 +252,8 @@ export function AplicacionForm({
             <select
               id="experiencia_anos"
               name="experiencia_anos"
+              value={experienciaAnos}
+              onChange={(e) => setExperienciaAnos(e.target.value)}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               {EXPERIENCIA_OPTIONS.map(o => (
@@ -219,6 +266,8 @@ export function AplicacionForm({
             <select
               id="nivel_educativo"
               name="nivel_educativo"
+              value={nivelEducativo}
+              onChange={(e) => setNivelEducativo(e.target.value)}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               {NIVEL_EDUCATIVO_OPTIONS.map(o => (
