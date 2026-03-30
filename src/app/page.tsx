@@ -2,6 +2,7 @@ import {
   HeroSection,
   ProblemSection,
   HowItWorksSection,
+  ComoFuncionaSection,
   ModulesSection,
   ScoringSection,
   IntegrationsSection,
@@ -19,6 +20,7 @@ export default function HomePage() {
       <HeroSection />
       <div id="problem"><ProblemSection /></div>
       <HowItWorksSection />
+      <ComoFuncionaSection />
       <div id="modules"><ModulesSection /></div>
       <ScoringSection />
       <div id="integrations"><IntegrationsSection /></div>

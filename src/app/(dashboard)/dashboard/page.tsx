@@ -11,6 +11,7 @@ import { getGreeting } from '@/lib/utils/design-tokens';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useSession } from 'next-auth/react';
+import { OnboardingChecklist } from '@/components/dashboard/OnboardingChecklist';
 
 interface DashboardData {
   stats: {
@@ -76,6 +77,9 @@ export default function DashboardPage() {
 
   return (
     <div className="animate-fade-in">
+      {/* Onboarding checklist — disappears when all steps complete or dismissed */}
+      <OnboardingChecklist />
+
       {/* Greeting */}
       <div className="flex items-center justify-between mb-8">
         <div>

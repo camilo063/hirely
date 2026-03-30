@@ -9,3 +9,4 @@ export { default as TestimonialsSection } from './TestimonialsSection';
 export { default as CtaSection } from './CtaSection';
 export { default as Navbar } from './Navbar';
 export { default as FooterSection } from './FooterSection';
+export { default as ComoFuncionaSection } from './ComoFuncionaSection';
