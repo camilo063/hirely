@@ -25,6 +25,7 @@ export interface VacantePublica {
   empresa_website: string | null;
   organization_id: string;
   departamento: string | null;
+  candidatos_count: number;
 }
 
 // --- Slug Generation ---
@@ -103,7 +104,8 @@ export async function getVacantePublica(slug: string): Promise<VacantePublica | 
        os.portal_logo_url as empresa_logo,
        COALESCE(os.portal_color_primario, '#00BCD4') as color_primario,
        os.portal_descripcion as empresa_descripcion,
-       os.portal_website as empresa_website
+       os.portal_website as empresa_website,
+       (SELECT COUNT(*) FROM aplicaciones a WHERE a.vacante_id = v.id)::int AS candidatos_count
      FROM vacantes v
      JOIN organizations o ON o.id = v.organization_id
      LEFT JOIN org_settings os ON os.organization_id = o.id
