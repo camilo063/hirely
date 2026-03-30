@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSession, signOut } from 'next-auth/react';
-import { Bell, Search, Menu, LogOut, User } from 'lucide-react';
+import { Search, Menu, LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { MobileNav } from './mobile-nav';
+import { NotificacionesCampana } from '@/components/notificaciones/NotificacionesCampana';
 
 export function Header() {
   const { data: session } = useSession();
@@ -49,13 +50,8 @@ export function Header() {
 
       {/* Right side */}
       <div className="flex items-center gap-2">
-        {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5 text-muted-foreground" />
-          <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-orange rounded-full text-[10px] text-white flex items-center justify-center font-bold">
-            3
-          </span>
-        </Button>
+        {/* Notifications — real-time via SSE */}
+        <NotificacionesCampana />
 
         {/* User dropdown */}
         <DropdownMenu>

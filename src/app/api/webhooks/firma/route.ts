@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { pool } from '@/lib/db';
+import { crearNotificacion } from '@/lib/services/notificaciones.service';
+import { emitirNotificacion } from '@/lib/services/sse-clients';
 
 /**
  * Webhook receiver for firma providers (SignWell, DocuSign, etc.)
@@ -70,6 +72,41 @@ export async function POST(request: NextRequest) {
       );
 
       console.log(`[Webhook Firma] Contrato ${id} marcado como firmado`);
+
+      // Notificacion en tiempo real
+      try {
+        const contratoInfo = await pool.query(
+          `SELECT c.nombre as candidato_nombre, c.apellido as candidato_apellido
+           FROM contratos ct
+           JOIN candidatos c ON ct.candidato_id = c.id
+           WHERE ct.id = $1`,
+          [id]
+        );
+        const candidatoNombreFirma = contratoInfo.rows.length > 0
+          ? `${contratoInfo.rows[0].candidato_nombre} ${contratoInfo.rows[0].candidato_apellido || ''}`.trim()
+          : 'Candidato';
+        const notif = await crearNotificacion({
+          organizacionId: organization_id,
+          tipo: 'contrato_firmado_bilateral',
+          titulo: 'Contrato firmado',
+          mensaje: `${candidatoNombreFirma} firmo el contrato`,
+          meta: { contrato_id: id, url: `/contratos/${id}` },
+        });
+        if (notif) {
+          emitirNotificacion(organization_id, {
+            type: 'notificacion',
+            id: notif.id,
+            tipo: 'contrato_firmado_bilateral',
+            titulo: 'Contrato firmado',
+            mensaje: `${candidatoNombreFirma} firmo el contrato`,
+            browser_activo: notif.browser_activo,
+            meta: { contrato_id: id, url: `/contratos/${id}` },
+            created_at: new Date().toISOString(),
+          });
+        }
+      } catch (e) {
+        console.error('[notificacion] Error:', e);
+      }
 
       // ── Side effects: notifications + onboarding ──
       // All wrapped in try/catch — webhook MUST always return 200

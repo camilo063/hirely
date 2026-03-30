@@ -7,7 +7,7 @@ import { useSession } from 'next-auth/react';
 import {
   LayoutDashboard, Briefcase, Users, Brain, FileText,
   Settings, ChevronLeft, ChevronRight, ClipboardCheck, UserCheck,
-  Building2, BarChart2,
+  Building2, BarChart2, Bell,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -38,6 +38,7 @@ const navGroups = [
   {
     label: 'Sistema',
     items: [
+      { name: 'Notificaciones', href: '/notificaciones', icon: Bell },
       { name: 'Configuracion', href: '/configuracion', icon: Settings },
     ],
   },
