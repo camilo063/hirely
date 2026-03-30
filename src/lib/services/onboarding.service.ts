@@ -1,5 +1,7 @@
 import { pool } from '@/lib/db';
 import { sendEmail } from './email.service';
+import { crearNotificacion } from '@/lib/services/notificaciones.service';
+import { emitirNotificacion } from '@/lib/services/sse-clients';
 import { UUID } from '@/lib/types/common.types';
 import { DocumentoCandidato } from '@/lib/types/contrato.types';
 import { NotFoundError } from '@/lib/utils/errors';
@@ -295,6 +297,33 @@ export async function enviarEmailBienvenida(
        WHERE id = $1`,
       [onboardingId]
     );
+
+    // Notificacion en tiempo real
+    try {
+      const candidatoNombreNotif = `${ob.candidato_nombre} ${ob.candidato_apellido || ''}`.trim();
+      const notif = await crearNotificacion({
+        organizacionId: orgId,
+        tipo: 'onboarding_email_enviado',
+        titulo: 'Email de onboarding enviado',
+        mensaje: `Se envio email de bienvenida a ${candidatoNombreNotif}`,
+        meta: { onboarding_id: onboardingId },
+      });
+      if (notif) {
+        emitirNotificacion(orgId, {
+          type: 'notificacion',
+          id: notif.id,
+          tipo: 'onboarding_email_enviado',
+          titulo: 'Email de onboarding enviado',
+          mensaje: `Se envio email de bienvenida a ${candidatoNombreNotif}`,
+          browser_activo: notif.browser_activo,
+          meta: { onboarding_id: onboardingId },
+          created_at: new Date().toISOString(),
+        });
+      }
+    } catch (e) {
+      console.error('[notificacion] Error:', e);
+    }
+
     return true;
   } catch (error) {
     console.error('[Onboarding] Error sending welcome email:', error);

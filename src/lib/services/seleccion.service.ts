@@ -6,6 +6,8 @@
 import { pool } from '@/lib/db';
 import { getAppUrl } from '@/lib/utils/url';
 import { sendEmail } from './email.service';
+import { crearNotificacion } from '@/lib/services/notificaciones.service';
+import { emitirNotificacion } from '@/lib/services/sse-clients';
 import {
   emailSeleccionTemplate,
   emailRechazoTemplate,
@@ -581,6 +583,38 @@ export async function uploadDocumentoPortal(
     }
   }
 
+  // Notificacion: documento subido
+  try {
+    const appDataNotif = await pool.query(
+      `SELECT v.organization_id FROM aplicaciones a JOIN vacantes v ON v.id = a.vacante_id WHERE a.id = $1`,
+      [aplicacionId]
+    );
+    const orgIdNotif = appDataNotif.rows[0]?.organization_id;
+    if (orgIdNotif) {
+      const notif = await crearNotificacion({
+        organizacionId: orgIdNotif,
+        tipo: 'documento_subido',
+        titulo: 'Documento subido',
+        mensaje: `${tipo} subido por candidato`,
+        meta: { aplicacion_id: aplicacionId },
+      });
+      if (notif) {
+        emitirNotificacion(orgIdNotif, {
+          type: 'notificacion',
+          id: notif.id,
+          tipo: 'documento_subido',
+          titulo: 'Documento subido',
+          mensaje: `${tipo} subido por candidato`,
+          browser_activo: notif.browser_activo,
+          meta: { aplicacion_id: aplicacionId },
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+  } catch (e) {
+    console.error('[notificacion] Error:', e);
+  }
+
   // Check if all required docs are now uploaded
   const docs = await pool.query(
     `SELECT * FROM documentos_candidato WHERE aplicacion_id = $1`,
@@ -614,6 +648,43 @@ export async function uploadDocumentoPortal(
 
     // Notify recruiter
     await notifyDocumentosCompletos(aplicacionId);
+
+    // Notificacion: documentos completos
+    try {
+      if (orgId) {
+        const candInfo = await pool.query(
+          `SELECT c.nombre as candidato_nombre, c.apellido as candidato_apellido, a.vacante_id
+           FROM aplicaciones a JOIN candidatos c ON c.id = a.candidato_id
+           WHERE a.id = $1`,
+          [aplicacionId]
+        );
+        const candNombre = candInfo.rows.length > 0
+          ? `${candInfo.rows[0].candidato_nombre} ${candInfo.rows[0].candidato_apellido || ''}`.trim()
+          : 'Candidato';
+        const vacanteIdNotif = candInfo.rows[0]?.vacante_id;
+        const notif = await crearNotificacion({
+          organizacionId: orgId,
+          tipo: 'documentos_completos',
+          titulo: 'Documentos completos',
+          mensaje: `${candNombre} completo todos los documentos`,
+          meta: { aplicacion_id: aplicacionId, url: `/vacantes/${vacanteIdNotif}/candidatos` },
+        });
+        if (notif) {
+          emitirNotificacion(orgId, {
+            type: 'notificacion',
+            id: notif.id,
+            tipo: 'documentos_completos',
+            titulo: 'Documentos completos',
+            mensaje: `${candNombre} completo todos los documentos`,
+            browser_activo: notif.browser_activo,
+            meta: { aplicacion_id: aplicacionId, url: `/vacantes/${vacanteIdNotif}/candidatos` },
+            created_at: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (e) {
+      console.error('[notificacion] Error:', e);
+    }
   }
 
   return { success: true };

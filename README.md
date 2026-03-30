@@ -1,13 +1,13 @@
 # Hirely — ATS (Applicant Tracking System)
 
-Plataforma SaaS multi-tenant de reclutamiento y seleccion de personal, construida con Next.js 14, TypeScript y PostgreSQL. Cubre el flujo completo: desde la publicacion de vacantes hasta la firma de contratos.
+Plataforma SaaS multi-tenant de reclutamiento y seleccion de personal, construida con Next.js 14, TypeScript y PostgreSQL. Cubre el flujo completo: desde la publicacion de vacantes hasta la firma de contratos, con notificaciones en tiempo real.
 
 ## Stack Tecnologico
 
 | Capa | Tecnologia |
 |------|-----------|
 | Frontend | Next.js 14 (App Router) + TypeScript + Tailwind CSS |
-| UI | shadcn/ui (28 componentes base + 76 componentes de dominio) |
+| UI | shadcn/ui (28 componentes base + 78 componentes de dominio) |
 | Auth | NextAuth.js v5 (Credentials + JWT) |
 | Base de datos | PostgreSQL 16 (Docker) |
 | Validacion | Zod 4.3 |
@@ -17,6 +17,7 @@ Plataforma SaaS multi-tenant de reclutamiento y seleccion de personal, construid
 | Email | Resend (emails transaccionales) |
 | Firma electronica | SignWell (produccion) / mock (desarrollo) |
 | Storage | AWS S3 (produccion, presigned URLs) / local filesystem (desarrollo) |
+| Tiempo real | SSE (Server-Sent Events) nativo — notificaciones in-app + browser |
 | Integraciones | LinkedIn OAuth, Dapta (voz IA), Google Calendar + Meet |
 | Deploy | Vercel (serverless) + Docker (alternativo) |
 
@@ -71,41 +72,50 @@ src/
 │   ├── (auth)/              # Login, Register
 │   ├── (dashboard)/         # Paginas protegidas del dashboard
 │   │   ├── candidatos/      # Banco de talento
-│   │   ├── configuracion/   # Ajustes de organizacion
+│   │   ├── configuracion/   # Ajustes de organizacion (9 tabs)
 │   │   ├── contratos/       # Gestion de contratos
 │   │   ├── entrevistas/     # Entrevistas IA y humanas
 │   │   ├── evaluaciones/    # Evaluaciones tecnicas + scoring dual
+│   │   ├── notificaciones/  # Centro de notificaciones con filtros y paginacion
 │   │   ├── onboarding/      # Gestion de onboarding
 │   │   └── vacantes/        # Vacantes y pipeline
-│   ├── (public)/            # Portal publico de empleo
+│   ├── (public)/            # Portal publico de empleo (rediseñado V2)
 │   │   └── empleo/[slug]/   # Pagina publica de vacante + aplicacion
-│   ├── api/                 # 90 rutas API REST
+│   ├── api/                 # 93 rutas API REST
 │   ├── auth/                # Flujos OAuth LinkedIn
 │   ├── evaluacion/[token]/  # Formulario publico de evaluacion tecnica
 │   └── portal/              # Portal publico de documentos
-├── components/              # 104 componentes React
+├── components/              # 106 componentes React
 │   ├── candidatos/          # Score badge, CV view, kanban, pipeline
+│   ├── configuracion/       # Tabs de config: checklist, tipos contrato, mapeo, emails, notificaciones
 │   ├── contratos/           # Editor, preview, firma, plantillas, versiones
 │   ├── documents/           # S3DocumentViewer (preview/descarga de archivos S3)
 │   ├── entrevistas/         # Trigger IA, evaluacion humana, scoring
 │   ├── evaluaciones/        # Banco preguntas, plantillas, formularios, anti-cheating, proctoring
-│   ├── layout/              # Sidebar, header, breadcrumbs, mobile-nav
+│   ├── layout/              # Sidebar, header (con campana notificaciones), breadcrumbs, mobile-nav
+│   ├── notificaciones/      # NotificacionesCampana (popover con badge en tiempo real)
 │   ├── onboarding/          # Contratar, plantilla email, docs
 │   ├── portal/              # Aplicacion publica, documentos
 │   ├── seleccion/           # Seleccionar, rechazar, documentos
 │   ├── shared/              # Data table, empty state, confirm dialog, loading
 │   ├── ui/                  # 28 shadcn/ui components
 │   └── vacantes/            # Card, form, status selector, LinkedIn publisher
-├── hooks/                   # 9 custom hooks (useDebounce, useCandidatos, useVacantes, useLinkedin, useToast, useReportes, useReveal, useTiposContrato, useS3Url)
+├── hooks/                   # 10 custom hooks
+│   ├── useNotificaciones.ts # SSE real-time + browser notifications
+│   ├── use-s3-url.ts        # Resolver URLs S3 client-side
+│   └── ...                  # useDebounce, useCandidatos, useVacantes, useLinkedin, useToast, useReportes, useReveal, useTiposContrato
 ├── lib/
 │   ├── auth/                # NextAuth config + API middleware helpers
-│   ├── db/                  # Pool de conexion + 24 migraciones SQL
-│   │   ├── migrations/      # 001-024 migraciones
+│   ├── db/                  # Pool de conexion + 25 migraciones SQL
+│   │   ├── migrations/      # 001-025 migraciones
 │   │   └── seeds/           # Preguntas iniciales de evaluacion
 │   ├── integrations/        # Clientes externos (Anthropic, Dapta, LinkedIn, Resend, SignWell, Google Calendar, AWS S3)
 │   │   ├── firma/           # Provider swappable: SignWell, DocuSign, mock
 │   │   └── s3.ts            # Cliente S3: upload, download, presigned URLs, extractS3Key, objectExists
-│   ├── services/            # 27 servicios de logica de negocio
+│   ├── services/            # 29 servicios de logica de negocio
+│   │   ├── notificaciones.service.ts  # Crear notificaciones respetando config admin
+│   │   ├── sse-clients.ts   # Mapa de clientes SSE en memoria + emitirNotificacion()
+│   │   └── ...              # candidatos, vacantes, contratos, seleccion, onboarding, etc.
 │   ├── types/               # 12 archivos de tipos TypeScript
 │   ├── utils/               # 12 utilidades (API response, errors, constants, design tokens, email templates, file-storage, pdf-extract, etc.)
 │   ├── validations/         # 6 schemas Zod
@@ -113,7 +123,7 @@ src/
 └── middleware.ts            # Edge middleware (proteccion de rutas)
 ```
 
-**Totales:** 331 archivos TypeScript/TSX, 104 componentes, 90 endpoints API, 27 servicios, 24 migraciones
+**Totales:** 340 archivos TypeScript/TSX, 106 componentes, 93 endpoints API, 29 servicios, 25 migraciones
 
 ---
 
@@ -126,7 +136,7 @@ src/
 - Autenticacion con NextAuth v5 (Credentials provider, JWT strategy)
 - Base de datos PostgreSQL 16 via Docker (puerto 5434)
 - Middleware Edge Runtime que protege todas las rutas del dashboard
-- Layout principal: sidebar con navegacion, header con menu de usuario, breadcrumbs
+- Layout principal: sidebar con navegacion, header con campana de notificaciones, breadcrumbs
 - Dashboard con metricas: vacantes activas, total candidatos, en proceso, contratados
 - Feed de actividad reciente
 - Multi-tenant: aislamiento de datos por `organization_id`
@@ -146,10 +156,15 @@ src/
 - 3 modos de publicacion LinkedIn: deeplink, API directa, Unipile
 - State machine de vacante: `borrador -> publicada -> pausada -> cerrada -> archivada`
 - Selector de estado inteligente con acciones LinkedIn automaticas por transicion
-- Pagina publica `/empleo/[slug]` para que candidatos apliquen
-- Pagina de agradecimiento post-aplicacion
+- **Portal publico `/empleo/[slug]` rediseñado (V2)**:
+  - Hero section con fondo navy, pills de metadata, social proof (candidatos postulados, dias publicada)
+  - Layout dos columnas (desktop): contenido principal + sidebar sticky con resumen y CTA
+  - Descripcion parseada automaticamente en bloques semanticos (parrafos + listas con bullets teal)
+  - Skills agrupadas por categoria (IA, Cloud, Liderazgo, Desarrollo) con colores diferenciados
+  - Formulario de postulacion con barra de progreso visual de 3 pasos
+  - Pagina de agradecimiento post-aplicacion
 - Criterios de evaluacion ponderados por vacante
-- Portal publico con conteo de vistas y aplicaciones
+- Portal publico con conteo de vistas y aplicaciones + `candidatos_count`
 
 **Servicios:** vacantes, linkedin, linkedin-publish, linkedin-sync, public-apply, portal-vacantes, vacancy-state-machine
 
@@ -182,7 +197,7 @@ src/
 - Score breakdown detallado por dimension con barras de progreso
 - Filtro "pasa el corte" basado en umbral configurable
 - Vista de CV parseado con datos estructurados
-- Detalle con pestanas: perfil, aplicaciones, CV
+- Detalle con pestanas: perfil, aplicaciones, CV, documentos
 
 **Servicios:** candidatos, cv-parser, scoring-ats
 
@@ -497,12 +512,58 @@ src/
 - `POST /api/upload` — upload general via servidor (authenticated)
 - `GET /api/health/s3` — health check de conectividad S3
 
-**Archivos clave:**
-- `src/lib/integrations/s3.ts` — cliente S3 con todas las operaciones
-- `src/lib/utils/file-storage.ts` — abstraccion S3/local
-- `src/hooks/use-s3-url.ts` — hook React para resolver URLs
-- `src/components/documents/s3-document-viewer.tsx` — componente viewer
-- `scripts/configure-s3-cors.sh` — configurar CORS en bucket S3
+---
+
+### Modulo 12: Notificaciones en Tiempo Real (SSE)
+
+**Paginas:** `/notificaciones`, campana en header (todas las paginas del dashboard), `/configuracion` (tab Notificaciones)
+
+- **Arquitectura SSE (Server-Sent Events)**: stream en tiempo real sin WebSockets ni librerias externas
+  - Mapa de clientes en memoria por organizacion (`sse-clients.ts`)
+  - Heartbeat cada 25s (evita timeout de Vercel a 30s)
+  - Reconexion automatica nativa de `EventSource` en el browser
+  - Multi-tab: el `tag` en `new Notification()` evita duplicados
+- **24 tipos de eventos notificables**:
+  - Vacante: publicada, pausada, limite aplicantes
+  - Aplicacion: nueva, descartada, score ATS calculado, estado pipeline cambiado
+  - Entrevistas: IA completada, humana agendada, humana realizada, evaluacion tecnica completada
+  - Seleccion: candidato seleccionado, documento subido/aprobado/rechazado, documentos completos, portal expirado
+  - Contrato: generado, enviado firma, firmado candidato, firmado bilateral
+  - Contratacion: candidato contratado, onboarding email enviado, candidato duplicado alerta, contrato terminado
+- **Icono campana en header** (`NotificacionesCampana`):
+  - Badge con conteo de no leidas (actualizacion en tiempo real via SSE)
+  - Popover con las ultimas 10 notificaciones
+  - Click navega a la URL del evento y marca como leida
+  - "Marcar todas leidas" optimistic update
+- **Notificaciones nativas del navegador**:
+  - Solicitud automatica de permiso al primer login
+  - Configurable por tipo de evento (browser_activo toggle)
+  - Solo dispara si el evento tiene `browser_activo: true` y el usuario dio permiso
+- **Pagina `/notificaciones`**:
+  - Historial completo con agrupacion por fecha (Hoy, Ayer, fecha)
+  - Filtros por categoria: Todas, Aplicaciones, Pipeline, Entrevistas, Evaluaciones, Documentos, Contratos, Contratacion
+  - Busqueda en titulo/mensaje
+  - Toggle "Solo sin leer"
+  - Paginacion (20 por pagina)
+  - Badge de tipo coloreado por categoria
+- **Configuracion granular** (`/configuracion?tab=notificaciones`):
+  - 24 toggles individuales organizados en 6 fases (Vacante, Aplicacion, Entrevistas, Seleccion, Contrato, Contratacion)
+  - Canal in-app (campana) y canal navegador (browser notification) por separado
+  - Badge de prioridad (alta/media/baja) por evento
+  - Controles globales: activar/desactivar todas in-app, todas navegador
+  - KPIs: eventos totales, activos in-app, con notif. navegador
+  - Restaurar a valores por defecto
+- **Servicio tolerante a fallos**: `crearNotificacion()` nunca lanza excepciones, todas las llamadas estan en try/catch para no romper el flujo principal
+- **12 puntos de integracion** en servicios existentes: cada accion clave del pipeline emite notificacion automaticamente
+
+**Servicios:** notificaciones, sse-clients
+
+**API Routes:**
+- `GET /api/notificaciones/sse` — stream SSE por organizacion (Content-Type: text/event-stream)
+- `GET /api/notificaciones` — listado con filtros, busqueda y paginacion
+- `PATCH /api/notificaciones` — marcar leida(s) o todas
+- `GET /api/notificaciones/config` — cargar config de la org
+- `PUT /api/notificaciones/config` — guardar config (upsert por tipo)
 
 ---
 
@@ -544,13 +605,15 @@ EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada
 10. Admin revisa/edita contrato en /contratos/[id]
 11. Enviar para firma electronica (SignWell bilateral: candidato + empresa)
 12. Confirmar firma bilateral -> Email de onboarding al candidato (automatico)
+
+* Cada paso clave emite notificacion en tiempo real via SSE a todos los admins conectados
 ```
 
 ---
 
 ## Base de Datos
 
-### Migraciones (24)
+### Migraciones (25)
 
 | # | Archivo | Descripcion |
 |---|---------|-------------|
@@ -578,6 +641,7 @@ EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada
 | 022 | `terminacion_contrato.sql` | Tabla terminaciones_contrato con motivos y fecha |
 | 023 | `configuracion_empresa.sql` | Columna config_empresa JSONB en organizations (NIT, representante, direccion) |
 | 024 | `tipo_plantilla_mapeo.sql` | Tabla tipo_plantilla_mapeo: mapeo admin tipo contrato -> plantilla |
+| 025 | `notificaciones.sql` | Tablas notificaciones + notificacion_config con indices |
 
 ### Tablas Principales
 
@@ -595,6 +659,8 @@ EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada
 - **documentos_candidato** — documentos subidos por candidatos (URL en S3 o local)
 - **documentos_onboarding** — documentos requeridos por organizacion
 - **org_settings** — configuracion por organizacion (email, scoring, portal, onboarding, plantillas email)
+- **notificaciones** — registros de eventos notificados (tipo, titulo, mensaje, leida, meta JSONB)
+- **notificacion_config** — preferencias admin por tipo de evento y canal (inapp, browser, prioridad)
 - **linkedin_tokens** — tokens OAuth LinkedIn
 - **linkedin_job_syncs** — tracking de sincronizacion
 - **preguntas_banco** — banco de preguntas tecnicas (categoria, tipo, puntos)
@@ -621,6 +687,7 @@ EVALUACION TECNICA: pendiente -> enviada -> en_progreso -> completada / expirada
 | **Google Calendar** | Agendamiento de entrevistas + Meet links | Funcional |
 | **LinkedIn** | OAuth, publicar vacantes, sync aplicantes | Requiere API key |
 | **AWS S3** | Almacenamiento de archivos con presigned URLs + upload directo desde browser | Funcional |
+| **SSE (nativo)** | Notificaciones en tiempo real in-app + browser notifications | Funcional |
 
 ---
 
@@ -678,6 +745,17 @@ npm run seed:preguntas   # Seed preguntas de evaluacion
 
 ## Changelog
 
+### 2026-03-30 — Notificaciones en Tiempo Real (SSE) + Rediseno Portal Publico
+
+- **Sistema de notificaciones completo**: SSE nativo, 24 tipos de eventos, campana con badge en tiempo real, popover con ultimas 10, pagina `/notificaciones` con filtros y paginacion
+- **Configuracion granular**: 24 toggles individuales por tipo de evento, canal in-app y browser independientes, organizado en 6 fases del pipeline
+- **Browser notifications**: Solicitud automatica de permiso, disparo condicional segun config admin, deduplicacion multi-tab
+- **12 puntos de integracion**: nueva_aplicacion, pipeline_estado_cambiado, candidato_seleccionado, candidato_contratado, entrevista_dapta_completada, contrato_firmado_bilateral, documentos_completos, documento_subido, onboarding_email_enviado, contrato_generado, contrato_enviado_firma, evaluacion_tecnica_completada
+- **Tablas nuevas**: `notificaciones` (append-only, JSONB meta), `notificacion_config` (UNIQUE org+tipo, upsert)
+- **Migracion**: 025_notificaciones.sql
+- **Rediseno portal publico V2**: Hero navy con social proof, layout dos columnas, descripcion parseada en bloques semanticos, skills agrupadas por categoria con colores, barra de progreso en formulario
+- **Fix portal**: Keywords normalizadas (accent-insensitive), logica de progreso mas conservadora, campo Area con label explicito en sidebar
+
 ### 2026-03-27 — Integracion AWS S3 + Presigned URLs
 
 - **Upload directo a S3**: El portal de documentos ahora sube archivos directamente a S3 desde el browser via presigned URLs, evitando el limite de 4.5MB de Vercel serverless functions
@@ -734,6 +812,7 @@ Configurado para **Vercel** con:
 - Output standalone para Docker deployment alternativo
 - Upload de archivos via presigned URLs (evita limite 4.5MB de serverless functions)
 - CORS configurado en bucket S3 para upload directo desde browser
+- SSE con heartbeat 25s (compatible con timeout de 30s de Vercel)
 
 ## Estado del MVP
 
@@ -741,6 +820,7 @@ Configurado para **Vercel** con:
 - Autenticacion multi-tenant con JWT
 - Dashboard con metricas y actividad reciente
 - CRUD completo de vacantes con state machine
+- Portal publico de empleo rediseñado (hero, dos columnas, skills categorizadas, social proof)
 - Banco de talento con CV parsing (Claude AI)
 - Scoring ATS deterministico (6 dimensiones ponderadas)
 - Pipeline kanban con drag & drop
@@ -764,15 +844,14 @@ Configurado para **Vercel** con:
 - Email de contratado desacoplado (siempre se envia, independiente del contrato)
 - Email admin configurable para firma digital
 - Integracion LinkedIn (OAuth, publicacion, sync)
-- Portal publico de empleo
 - Reportes y Analytics: pipeline (funnel, tiempos, volumen, scores) + integridad de evaluaciones
 - AWS S3 storage con presigned URLs (upload directo desde browser, resolucion server-side)
-- 28 componentes shadcn/ui + 76 de dominio
-- 90 endpoints API REST
-- 27 servicios de logica de negocio
-- 24 migraciones SQL
+- Notificaciones en tiempo real via SSE (24 tipos, campana con badge, popover, pagina completa, config granular, browser notifications)
+- 28 componentes shadcn/ui + 78 de dominio
+- 93 endpoints API REST
+- 29 servicios de logica de negocio
+- 25 migraciones SQL
 
 ### Pendiente
 - Colaboracion en equipo (comentarios, menciones)
-- Notificaciones en tiempo real (WebSocket/SSE)
 - App movil (solo responsive web)

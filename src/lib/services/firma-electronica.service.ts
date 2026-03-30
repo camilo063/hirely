@@ -11,6 +11,8 @@ import { NotFoundError } from '../utils/errors';
 import { getAppUrl } from '../utils/url';
 import { crearFirmaProvider } from '../integrations/firma';
 import type { Signatario } from '../integrations/firma';
+import { crearNotificacion } from '@/lib/services/notificaciones.service';
+import { emitirNotificacion } from '@/lib/services/sse-clients';
 
 const firmaProvider = crearFirmaProvider();
 
@@ -124,6 +126,31 @@ export async function enviarParaFirma(
         signatarios: signatarios.map(s => s.email),
       })]
     );
+
+    // Notificacion en tiempo real
+    try {
+      const notif = await crearNotificacion({
+        organizacionId: orgId,
+        tipo: 'contrato_enviado_firma',
+        titulo: 'Contrato enviado para firma',
+        mensaje: `Contrato enviado a ${candidatoNombre} para firma digital`,
+        meta: { contrato_id: contratoId, url: `/contratos/${contratoId}` },
+      });
+      if (notif) {
+        emitirNotificacion(orgId, {
+          type: 'notificacion',
+          id: notif.id,
+          tipo: 'contrato_enviado_firma',
+          titulo: 'Contrato enviado para firma',
+          mensaje: `Contrato enviado a ${candidatoNombre} para firma digital`,
+          browser_activo: notif.browser_activo,
+          meta: { contrato_id: contratoId, url: `/contratos/${contratoId}` },
+          created_at: new Date().toISOString(),
+        });
+      }
+    } catch (e) {
+      console.error('[notificacion] Error:', e);
+    }
 
     return { success: true, signingUrl: firmaResult.signingUrl };
   } catch (err) {
