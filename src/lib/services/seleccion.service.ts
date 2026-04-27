@@ -25,7 +25,6 @@ import type {
   DocumentoChecklist,
   DocumentoCandidatoRow,
   DocumentoConLabel,
-  CHECKLIST_DOCUMENTOS_DEFAULT as ChecklistDefault,
 } from '@/lib/types/seleccion.types';
 import { CHECKLIST_DOCUMENTOS_DEFAULT } from '@/lib/types/seleccion.types';
 
@@ -91,19 +90,11 @@ export async function seleccionarCandidato(
     );
 
     // 4. Get checklist (vacante > org_settings > default)
-    let checklist: DocumentoChecklist[] = CHECKLIST_DOCUMENTOS_DEFAULT;
-
-    if (app.vacante_checklist && Array.isArray(app.vacante_checklist) && app.vacante_checklist.length > 0) {
-      checklist = app.vacante_checklist;
-    } else {
-      const orgSettings = await client.query(
-        `SELECT checklist_documentos FROM org_settings WHERE organization_id = $1`,
-        [orgId]
-      );
-      if (orgSettings.rows.length > 0 && orgSettings.rows[0].checklist_documentos?.length > 0) {
-        checklist = orgSettings.rows[0].checklist_documentos;
-      }
-    }
+    let checklist: DocumentoChecklist[] = await getEffectiveChecklist(
+      orgId,
+      app.vacante_checklist,
+      client
+    );
 
     // Filter by tipo_contrato if set
     if (payload.tipo_contrato) {
@@ -729,14 +720,17 @@ async function notifyDocumentosCompletos(aplicacionId: string): Promise<void> {
 
 // ─── ORG CHECKLIST CONFIG ─────────────────────
 
-export async function getOrgChecklist(orgId: string): Promise<DocumentoChecklist[]> {
-  const result = await pool.query(
+export async function getOrgChecklist(
+  orgId: string,
+  client?: { query: typeof pool.query }
+): Promise<DocumentoChecklist[]> {
+  const runner = client ?? pool;
+  const result = await runner.query(
     `SELECT checklist_documentos FROM org_settings WHERE organization_id = $1`,
     [orgId]
   );
-  if (result.rows.length > 0 && result.rows[0].checklist_documentos?.length > 0) {
-    return result.rows[0].checklist_documentos;
-  }
+  const parsed = parseChecklistJson(result.rows[0]?.checklist_documentos);
+  if (parsed.length > 0) return parsed;
   return CHECKLIST_DOCUMENTOS_DEFAULT;
 }
 
@@ -756,12 +750,19 @@ export async function updateOrgChecklist(
 
 // ─── HELPERS ──────────────────────────────────
 
+function parseChecklistJson(value: unknown): DocumentoChecklist[] {
+  if (!value) return [];
+  // pg returns JSONB as parsed JS, but defensive against double-encoded strings
+  const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+  return Array.isArray(parsed) ? parsed : [];
+}
+
 async function getEffectiveChecklist(
   orgId: string,
-  vacanteChecklist?: DocumentoChecklist[] | null
+  vacanteChecklist?: DocumentoChecklist[] | string | null,
+  client?: { query: typeof pool.query }
 ): Promise<DocumentoChecklist[]> {
-  if (vacanteChecklist && Array.isArray(vacanteChecklist) && vacanteChecklist.length > 0) {
-    return vacanteChecklist;
-  }
-  return getOrgChecklist(orgId);
+  const vacanteParsed = parseChecklistJson(vacanteChecklist);
+  if (vacanteParsed.length > 0) return vacanteParsed;
+  return getOrgChecklist(orgId, client);
 }

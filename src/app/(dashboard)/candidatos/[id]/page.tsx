@@ -519,38 +519,40 @@ export default function CandidatoDetailPage() {
                                   {doc.estado !== 'pendiente' && doc.created_at ? new Date(doc.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) : '—'}
                                 </td>
                                 <td className="px-4 py-2.5 text-center">
-                                  {doc.estado === 'subido' && (
-                                    <div className="flex items-center justify-center gap-1">
-                                      {doc.url && (
-                                        <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                                          <Button size="sm" variant="ghost" className="h-7 text-xs">Ver</Button>
-                                        </a>
-                                      )}
-                                      <Button
-                                        size="sm" variant="outline"
-                                        className="h-7 text-xs text-green-600 border-green-200 hover:bg-green-50"
-                                        onClick={() => handleVerificarDoc(doc.id)}
-                                        disabled={verificandoDocId === doc.id}
-                                      >
-                                        {verificandoDocId === doc.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Aprobar'}
-                                      </Button>
-                                      <Button
-                                        size="sm" variant="outline"
-                                        className="h-7 text-xs text-red-500 border-red-200 hover:bg-red-50"
-                                        onClick={() => {
-                                      setRechazarDocId(doc.id);
-                                      setRechazarMotivo('');
-                                      setRechazarDialogOpen(true);
-                                    }}
-                                    disabled={verificandoDocId === doc.id}
-                                  >
-                                    Rechazar
-                                  </Button>
-                                    </div>
-                                  )}
-                                  {doc.estado === 'verificado' && <span className="text-xs text-green-600">Aprobado</span>}
-                                  {doc.estado === 'rechazado' && <span className="text-xs text-red-500">Rechazado</span>}
-                                  {doc.estado === 'pendiente' && <span className="text-xs text-muted-foreground">Esperando</span>}
+                                  <div className="flex items-center justify-center gap-1 flex-wrap">
+                                    {doc.url && (
+                                      <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                                        <Button size="sm" variant="ghost" className="h-7 text-xs text-teal hover:text-teal/80">Ver</Button>
+                                      </a>
+                                    )}
+                                    {doc.estado === 'subido' && (
+                                      <>
+                                        <Button
+                                          size="sm" variant="outline"
+                                          className="h-7 text-xs text-green-600 border-green-200 hover:bg-green-50"
+                                          onClick={() => handleVerificarDoc(doc.id)}
+                                          disabled={verificandoDocId === doc.id}
+                                        >
+                                          {verificandoDocId === doc.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Aprobar'}
+                                        </Button>
+                                        <Button
+                                          size="sm" variant="outline"
+                                          className="h-7 text-xs text-red-500 border-red-200 hover:bg-red-50"
+                                          onClick={() => {
+                                            setRechazarDocId(doc.id);
+                                            setRechazarMotivo('');
+                                            setRechazarDialogOpen(true);
+                                          }}
+                                          disabled={verificandoDocId === doc.id}
+                                        >
+                                          Rechazar
+                                        </Button>
+                                      </>
+                                    )}
+                                    {doc.estado === 'verificado' && <span className="text-xs text-green-600 font-medium">Aprobado</span>}
+                                    {doc.estado === 'rechazado' && <span className="text-xs text-red-500 font-medium">Rechazado</span>}
+                                    {doc.estado === 'pendiente' && <span className="text-xs text-muted-foreground">Esperando</span>}
+                                  </div>
                                 </td>
                               </tr>
                             ))}
