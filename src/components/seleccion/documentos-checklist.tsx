@@ -183,17 +183,20 @@ export function DocumentosChecklist({ aplicacionId, portalToken, onComplete }: P
               </div>
 
               {/* Actions */}
-              <div className="shrink-0 flex items-center gap-1">
-                {doc.estado === 'subido' && doc.url && (
+              <div className="shrink-0 flex items-center gap-2">
+                {doc.url && (
+                  <a
+                    href={doc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-teal hover:text-teal/80 hover:underline text-xs font-medium inline-flex items-center gap-1"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Ver
+                  </a>
+                )}
+                {doc.estado === 'subido' && (
                   <>
-                    <a
-                      href={doc.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-teal hover:text-teal/80"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </a>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -215,13 +218,13 @@ export function DocumentosChecklist({ aplicacionId, portalToken, onComplete }: P
                   </>
                 )}
                 {doc.estado === 'verificado' && (
-                  <span className="text-xs text-green-600">Verificado</span>
+                  <span className="text-xs text-green-600 font-medium">Verificado</span>
                 )}
                 {doc.estado === 'pendiente' && (
                   <span className="text-xs text-gray-400">Pendiente</span>
                 )}
                 {doc.estado === 'rechazado' && (
-                  <span className="text-xs text-red-500">Esperando re-envio</span>
+                  <span className="text-xs text-red-500 font-medium">Esperando re-envio</span>
                 )}
               </div>
             </div>
