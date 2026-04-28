@@ -1,12 +1,15 @@
 import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
+import { resolveUrl } from '@/lib/integrations/s3';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
-function formatOrg(row: { name: string; logo_url: string | null; config_empresa: Record<string, string> | null }) {
+async function formatOrg(row: { name: string; logo_url: string | null; config_empresa: Record<string, string> | null }) {
+  const logoUrl = row.logo_url || '';
   return {
     nombre_empresa: row.name,
-    logo_url: row.logo_url || '',
+    logo_url: logoUrl,
+    logo_display_url: logoUrl ? await resolveUrl(logoUrl) : '',
     config: row.config_empresa || {},
   };
 }
@@ -26,7 +29,7 @@ export async function GET() {
       return apiResponse({ error: 'Organizacion no encontrada' }, 404);
     }
 
-    return apiResponse(formatOrg(result.rows[0]));
+    return apiResponse(await formatOrg(result.rows[0]));
   } catch (error) {
     return apiError(error);
   }
@@ -97,7 +100,7 @@ export async function PATCH(request: NextRequest) {
       return apiResponse({ error: 'Organizacion no encontrada' }, 404);
     }
 
-    return apiResponse(formatOrg(result.rows[0]));
+    return apiResponse(await formatOrg(result.rows[0]));
   } catch (error) {
     return apiError(error);
   }

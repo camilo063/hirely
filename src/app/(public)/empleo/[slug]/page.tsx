@@ -8,12 +8,19 @@ import { AplicacionFormWrapper } from '@/components/portal/aplicacion-form-wrapp
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const vacante = await getVacantePublicaForMeta(slug);
-  if (!vacante) return { title: 'Vacante no encontrada' };
+  const baseUrl = (process.env.NEXTAUTH_URL || process.env.APP_URL || '').replace(/\/+$/, '');
+
+  if (!vacante) {
+    return {
+      title: 'Vacante no encontrada',
+      openGraph: baseUrl ? { images: [`${baseUrl}/api/og/fallback`] } : undefined,
+    };
+  }
 
   const description = vacante.descripcion
     .replace(/<[^>]*>/g, '')
     .substring(0, 160);
-  const baseUrl = process.env.NEXTAUTH_URL || process.env.APP_URL || '';
+  const ogImageUrl = baseUrl ? `${baseUrl}/api/og/vacante/${vacante.id}` : `/api/og/vacante/${vacante.id}`;
 
   return {
     title: `${vacante.titulo} en ${vacante.empresa_nombre} | Empleo`,
@@ -22,13 +29,22 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       title: `${vacante.titulo} - ${vacante.empresa_nombre}`,
       description,
       type: 'website',
-      url: `${baseUrl}/empleo/${slug}`,
+      url: baseUrl ? `${baseUrl}/empleo/${slug}` : `/empleo/${slug}`,
       siteName: 'Hirely',
+      images: [
+        {
+          url: ogImageUrl,
+          width: 1200,
+          height: 630,
+          alt: `${vacante.titulo} en ${vacante.empresa_nombre}`,
+        },
+      ],
     },
     twitter: {
       card: 'summary_large_image',
       title: `${vacante.titulo} - ${vacante.empresa_nombre}`,
       description,
+      images: [ogImageUrl],
     },
   };
 }
@@ -36,7 +52,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 async function getVacantePublicaForMeta(slug: string) {
   const { pool } = await import('@/lib/db');
   const result = await pool.query(
-    `SELECT v.titulo, v.descripcion, o.name as empresa_nombre
+    `SELECT v.id, v.titulo, v.descripcion, o.name as empresa_nombre
      FROM vacantes v
      JOIN organizations o ON o.id = v.organization_id
      WHERE v.slug = $1 AND v.is_published = true AND v.estado = 'publicada'`,
@@ -256,23 +272,16 @@ export default async function PublicVacanteSlugPage({
         <div className="absolute -bottom-24 -left-24 w-72 h-72 rounded-full bg-[#00BCD4] opacity-[0.03]" />
 
         <div className="relative p-5 md:p-8">
-          {/* Company */}
-          <div className="flex items-center gap-3 mb-4">
+          {/* Company logo — natural aspect ratio, no white frame */}
+          <div className="flex items-center mb-4">
             {vacante.empresa_logo ? (
-              <img src={vacante.empresa_logo} alt={vacante.empresa_nombre} className="h-10 w-10 rounded-lg object-cover ring-1 ring-white/10" />
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={vacante.empresa_logo} alt={vacante.empresa_nombre} className="h-12 w-auto max-w-[260px] object-contain" />
             ) : (
-              <div className="h-10 w-10 rounded-lg bg-white/10 flex items-center justify-center ring-1 ring-white/10">
-                <Building className="h-5 w-5 text-white/70" />
+              <div className="h-12 w-12 rounded-lg bg-white/10 flex items-center justify-center ring-1 ring-white/10">
+                <Building className="h-6 w-6 text-white/70" />
               </div>
             )}
-            <div>
-              <p className="text-sm font-medium text-white/90">{vacante.empresa_nombre}</p>
-              {vacante.empresa_website && (
-                <a href={vacante.empresa_website} target="_blank" rel="noopener noreferrer" className="text-xs text-white/40 hover:text-[#00BCD4] transition-colors">
-                  {vacante.empresa_website.replace(/^https?:\/\//, '')}
-                </a>
-              )}
-            </div>
           </div>
 
           {/* Title */}

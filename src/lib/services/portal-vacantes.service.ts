@@ -1,5 +1,6 @@
 import { pool } from '@/lib/db';
 import { getAppUrl } from '@/lib/utils/url';
+import { resolveUrl } from '@/lib/integrations/s3';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
 import { emitirNotificacion } from '@/lib/services/sse-clients';
 
@@ -103,7 +104,7 @@ export async function getVacantePublica(slug: string): Promise<VacantePublica | 
        v.rango_salarial_min, v.rango_salarial_max, v.moneda,
        v.published_at, v.slug, v.organization_id,
        o.name as empresa_nombre,
-       os.portal_logo_url as empresa_logo,
+       COALESCE(os.portal_logo_url, o.logo_url) as empresa_logo,
        COALESCE(os.portal_color_primario, '#00BCD4') as color_primario,
        os.portal_descripcion as empresa_descripcion,
        os.portal_website as empresa_website,
@@ -123,7 +124,11 @@ export async function getVacantePublica(slug: string): Promise<VacantePublica | 
     [slug]
   );
 
-  return result.rows[0];
+  const row = result.rows[0];
+  if (row.empresa_logo) {
+    row.empresa_logo = await resolveUrl(row.empresa_logo);
+  }
+  return row;
 }
 
 // --- Procesar Aplicación ---

@@ -158,9 +158,10 @@ function ConfiguracionPage() {
   // Organizacion tab state
   const [orgNombre, setOrgNombre] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
-  const [orgLogo, setOrgLogo] = useState('');
+  const [orgLogoPreview, setOrgLogoPreview] = useState('');
   const [orgDiasVencimiento, setOrgDiasVencimiento] = useState(30);
   const [orgSaving, setOrgSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   useEffect(() => {
     fetch('/api/configuracion/empresa')
@@ -170,10 +171,33 @@ function ConfiguracionPage() {
         const nombre = d.nombre_empresa || '';
         setOrgNombre(nombre);
         setOrgSlug(nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''));
-        setOrgLogo(d.logo_url || '');
+        setOrgLogoPreview(d.logo_display_url || d.logo_url || '');
       })
       .catch(() => {});
   }, []);
+
+  const handleLogoUpload = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('El archivo debe ser una imagen (JPG o PNG)');
+      return;
+    }
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/configuracion/logo', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Error al subir el logo');
+      const data = json.data || json;
+      setOrgLogoPreview(data.displayUrl || data.url || '');
+      toast.success('Logo actualizado');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error al subir el logo';
+      toast.error(msg);
+    } finally {
+      setLogoUploading(false);
+    }
+  };
 
   // Handle LinkedIn OAuth callback params
   useEffect(() => {
@@ -250,8 +274,32 @@ function ConfiguracionPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Logo URL</Label>
-                <Input value={orgLogo} onChange={(e) => setOrgLogo(e.target.value)} placeholder="https://..." />
+                <Label>Logo de la empresa</Label>
+                <div className="flex items-center gap-4">
+                  <div className="h-20 w-20 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {orgLogoPreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={orgLogoPreview} alt="Logo" className="h-full w-full object-contain" />
+                    ) : (
+                      <Building className="h-8 w-8 text-gray-300" />
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <Input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg"
+                      disabled={logoUploading}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleLogoUpload(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {logoUploading ? 'Subiendo...' : 'JPG o PNG. Maximo 10MB. Se guarda automaticamente al seleccionar.'}
+                    </p>
+                  </div>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Dias de vencimiento de oferta</Label>
@@ -266,7 +314,7 @@ function ConfiguracionPage() {
                     const res = await fetch('/api/configuracion/empresa', {
                       method: 'PATCH',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ nombre_empresa: orgNombre, logo_url: orgLogo }),
+                      body: JSON.stringify({ nombre_empresa: orgNombre }),
                     });
                     if (!res.ok) throw new Error();
                     toast.success('Datos de organizacion guardados');
