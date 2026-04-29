@@ -4,6 +4,8 @@ import { autoPoblarDatos } from '@/lib/services/contratos.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { ValidationError } from '@/lib/utils/errors';
 
+export const maxDuration = 10;
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();

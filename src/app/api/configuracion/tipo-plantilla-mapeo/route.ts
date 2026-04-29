@@ -4,6 +4,8 @@ import { pool } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
 // GET — obtener mapeos actuales + datos para los selects
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     await requireAuth();

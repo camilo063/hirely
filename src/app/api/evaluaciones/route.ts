@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { listarEvaluaciones, crearEvaluacion } from '@/lib/services/evaluacion-tecnica.service';
 import { evaluacionCreateSchema } from '@/lib/validations/evaluacion.schema';
 
+export const maxDuration = 10;
+
 export async function GET(request: NextRequest) {
   try {
     const orgId = await getOrgId();

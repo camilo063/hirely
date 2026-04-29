@@ -7,6 +7,8 @@ import { emailOnboardingTemplate } from '@/lib/utils/email-templates';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
 // POST — Enviar contrato para firma electronica
+export const maxDuration = 30;
+
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { importarPreguntas } from '@/lib/services/banco-preguntas.service';
 import { importarPreguntasSchema } from '@/lib/validations/evaluacion.schema';
 
+export const maxDuration = 10;
+
 export async function POST(request: NextRequest) {
   try {
     const orgId = await getOrgId();

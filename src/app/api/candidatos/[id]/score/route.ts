@@ -12,6 +12,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
  * Ejecuta el pipeline de scoring completo para un candidato.
  * Si el CV no esta parseado, lo parsea primero.
  */
+export const maxDuration = 30;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

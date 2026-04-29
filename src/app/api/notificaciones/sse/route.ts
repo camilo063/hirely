@@ -3,6 +3,8 @@ import { getSession } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
 import { getClients } from '@/lib/services/sse-clients';
 
+export const maxDuration = 30;
+
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session?.user) {

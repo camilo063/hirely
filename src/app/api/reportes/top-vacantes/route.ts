@@ -3,6 +3,8 @@ import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { obtenerTopVacantes } from '@/lib/services/reportes.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();

@@ -13,6 +13,8 @@ import { pool } from '@/lib/db';
  * Candidates access via token from email link.
  */
 
+export const maxDuration = 15;
+
 export async function GET(_request: NextRequest, { params }: { params: { token: string } }) {
   try {
     const result = await obtenerEvaluacionPorToken(params.token);

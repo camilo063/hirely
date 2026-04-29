@@ -13,6 +13,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
  * - Si se envia un archivo en el body (multipart), parsea ese PDF
  * - Si no tiene PDF, intenta construir datos desde LinkedIn/datos existentes
  */
+export const maxDuration = 30;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

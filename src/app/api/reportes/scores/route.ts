@@ -4,6 +4,8 @@ import { obtenerDistribucionScores } from '@/lib/services/reportes.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import type { FiltrosReporte } from '@/lib/types/reportes.types';
 
+export const maxDuration = 10;
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();

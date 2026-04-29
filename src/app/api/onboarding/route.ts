@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { iniciarOnboarding, listOnboardings } from '@/lib/services/onboarding.service';
 
 // POST — Iniciar onboarding (contratar candidato)
+export const maxDuration = 10;
+
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();

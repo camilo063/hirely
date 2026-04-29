@@ -4,6 +4,8 @@ import { getPortalData } from '@/lib/services/seleccion.service';
 import { resolveUrl } from '@/lib/integrations/s3';
 
 // GET /api/portal/documentos/[token] — Public portal data (no auth required)
+export const maxDuration = 15;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> }

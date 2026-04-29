@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
 
 // GET /api/configuracion/emails — Get email templates + firma admin email
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     await requireAuth();

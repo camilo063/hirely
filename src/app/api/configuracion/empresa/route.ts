@@ -15,6 +15,8 @@ async function formatOrg(row: { name: string; logo_url: string | null; config_em
 }
 
 // GET /api/configuracion/empresa — obtener config empresa actual
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     await requireAuth();

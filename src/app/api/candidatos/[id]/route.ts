@@ -5,6 +5,8 @@ import { candidatoUpdateSchema } from '@/lib/validations/candidato.schema';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { resolveUrl } from '@/lib/integrations/s3';
 
+export const maxDuration = 10;
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

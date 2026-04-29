@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { getOnboardingConfig, updateOnboardingConfig } from '@/lib/services/onboarding.service';
 
 // GET — Config de onboarding de la org
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     await requireAuth();

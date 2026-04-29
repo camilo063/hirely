@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { isS3Configured, checkS3Health } from '@/lib/integrations/s3';
 
+export const maxDuration = 10;
+
 export async function GET(request: Request) {
   // Only allow in development or with internal key
   const isDev = process.env.NODE_ENV === 'development';

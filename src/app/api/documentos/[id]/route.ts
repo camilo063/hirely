@@ -5,6 +5,8 @@ import { verificarDocumento, getChecklistDocumentos } from '@/lib/services/selec
 import { resolveUrl } from '@/lib/integrations/s3';
 
 // PATCH /api/documentos/[id] — Verificar o rechazar documento
+export const maxDuration = 10;
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

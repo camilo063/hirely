@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { seleccionarCandidato, rechazarCandidatos } from '@/lib/services/seleccion.service';
 
 // POST /api/seleccion — Seleccionar candidato
+export const maxDuration = 10;
+
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();

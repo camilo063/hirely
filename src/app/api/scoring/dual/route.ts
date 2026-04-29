@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
 
 // GET /api/scoring/dual?vacante_id=xxx — Dashboard de scoring dual por vacante
+export const maxDuration = 30;
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();

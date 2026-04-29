@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { getOnboarding, updateOnboarding } from '@/lib/services/onboarding.service';
 
 // GET — Detalle de un onboarding
+export const maxDuration = 10;
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

@@ -3,6 +3,8 @@ import { requireAuth, getOrgId, getUserId } from '@/lib/auth/middleware';
 import { regenerarHtml } from '@/lib/services/contratos.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

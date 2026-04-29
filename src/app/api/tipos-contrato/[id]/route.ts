@@ -3,6 +3,8 @@ import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { getTipoContrato, updateTipoContrato, deleteTipoContrato } from '@/lib/services/tipos-contrato.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

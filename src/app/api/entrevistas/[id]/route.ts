@@ -4,6 +4,8 @@ import { getEntrevistaIAReport } from '@/lib/services/entrevista-ia.service';
 import { getEntrevistaHumana } from '@/lib/services/entrevista-humana.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

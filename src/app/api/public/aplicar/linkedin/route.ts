@@ -3,6 +3,8 @@ import { encodeOAuthState } from '@/lib/utils/oauth-state';
 import { getCandidateAuthorizationUrl } from '@/lib/integrations/linkedin.client';
 import { getPublicVacante } from '@/lib/services/public-apply.service';
 
+export const maxDuration = 15;
+
 export async function GET(request: NextRequest) {
   const vacanteId = request.nextUrl.searchParams.get('vacante_id');
   if (!vacanteId) {

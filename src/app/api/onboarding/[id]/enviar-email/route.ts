@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { enviarEmailBienvenida } from '@/lib/services/onboarding.service';
 
 // POST — Enviar (o re-enviar) email de bienvenida
+export const maxDuration = 30;
+
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

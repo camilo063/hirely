@@ -4,6 +4,8 @@ import { exchangeCodeForToken, getProfile } from '@/lib/integrations/linkedin.cl
 import { saveLinkedInToken } from '@/lib/services/linkedin.service';
 import { getAppUrl } from '@/lib/utils/url';
 
+export const maxDuration = 30;
+
 export async function GET(request: NextRequest) {
   const baseUrl = getAppUrl();
   const redirectBase = `${baseUrl}/configuracion?tab=integraciones`;

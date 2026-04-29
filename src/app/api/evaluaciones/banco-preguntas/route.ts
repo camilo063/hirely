@@ -5,6 +5,8 @@ import { listarPreguntas, crearPregunta } from '@/lib/services/banco-preguntas.s
 import { preguntaCreateSchema } from '@/lib/validations/evaluacion.schema';
 import type { Dificultad, TipoPregunta, EstadoPregunta } from '@/lib/types/evaluacion-tecnica.types';
 
+export const maxDuration = 10;
+
 export async function GET(request: NextRequest) {
   try {
     const orgId = await getOrgId();

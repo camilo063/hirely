@@ -8,6 +8,8 @@ import { pool } from '@/lib/db';
  * Webhook endpoint for Unipile events (e.g. new job applicants).
  * Configure in Unipile dashboard: webhook URL → https://yourdomain.com/api/webhooks/unipile
  */
+export const maxDuration = 30;
+
 export async function POST(request: NextRequest) {
   try {
     const webhookSecret = request.headers.get('x-webhook-secret');

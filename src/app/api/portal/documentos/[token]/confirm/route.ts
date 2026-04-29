@@ -10,6 +10,8 @@ import { resolveUrl } from '@/lib/integrations/s3';
  *
  * Body: { tipo: string, documento_id: string, filename: string, s3Url: string }
  */
+export const maxDuration = 15;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> }

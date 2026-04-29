@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 30;
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

@@ -14,6 +14,8 @@ const ALLOWED_UPLOAD_TYPES = [
 
 // POST /api/s3/presign
 // Body: { key: string, action: 'download' | 'upload', contentType?: string, expiresIn?: number }
+export const maxDuration = 15;
+
 export async function POST(req: NextRequest) {
   try {
     await requireAuth();

@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { listarPlantillas, crearPlantilla } from '@/lib/services/evaluacion-tecnica.service';
 import { plantillaCreateSchema } from '@/lib/validations/evaluacion.schema';
 
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     const orgId = await getOrgId();

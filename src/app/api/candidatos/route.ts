@@ -4,6 +4,8 @@ import { listCandidatos, createCandidato } from '@/lib/services/candidatos.servi
 import { candidatoCreateSchema } from '@/lib/validations/candidato.schema';
 import { apiResponse, apiError, paginatedResponse } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();

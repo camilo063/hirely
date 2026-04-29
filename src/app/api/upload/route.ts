@@ -14,6 +14,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
  *
  * Returns: { key, url, size }
  */
+export const maxDuration = 30;
+
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();

@@ -2,6 +2,8 @@ import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     await requireAuth();

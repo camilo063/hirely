@@ -4,6 +4,8 @@ import { listContratos, createContrato } from '@/lib/services/contratos.service'
 import { contratoCreateSchema } from '@/lib/validations/contrato.schema';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();
