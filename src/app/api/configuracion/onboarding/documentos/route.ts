@@ -7,6 +7,8 @@ import { saveFile, validateFile } from '@/lib/utils/file-storage';
 import { resolveUrl } from '@/lib/integrations/s3';
 
 // GET — Listar documentos de onboarding de la org
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     await requireAuth();

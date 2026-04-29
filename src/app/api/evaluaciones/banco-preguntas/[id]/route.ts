@@ -5,6 +5,8 @@ import { obtenerPregunta, actualizarPregunta } from '@/lib/services/banco-pregun
 import { preguntaUpdateSchema } from '@/lib/validations/evaluacion.schema';
 import { NotFoundError } from '@/lib/utils/errors';
 
+export const maxDuration = 10;
+
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const orgId = await getOrgId();

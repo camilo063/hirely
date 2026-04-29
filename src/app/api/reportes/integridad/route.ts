@@ -3,6 +3,8 @@ import { getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
 
+export const maxDuration = 10;
+
 export async function GET(request: NextRequest) {
   try {
     const orgId = await getOrgId();

@@ -11,6 +11,8 @@ const estadoSchema = z.object({
   estado: z.enum(['borrador', 'publicada', 'pausada', 'cerrada', 'archivada']),
 });
 
+export const maxDuration = 10;
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

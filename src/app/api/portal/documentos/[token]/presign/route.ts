@@ -23,6 +23,8 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
  * Body: { tipo: string, documento_id: string, filename: string, contentType: string, fileSize: number }
  * Returns: { uploadUrl: string, key: string, s3Url: string } or falls back to { useFormData: true }
  */
+export const maxDuration = 15;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> }

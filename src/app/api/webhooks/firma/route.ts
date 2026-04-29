@@ -9,6 +9,8 @@ import { emitirNotificacion } from '@/lib/services/sse-clients';
  * Always returns 200 OK — even on internal errors — to prevent
  * the provider from retrying indefinitely.
  */
+export const maxDuration = 30;
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

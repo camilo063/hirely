@@ -5,6 +5,8 @@ import { pool } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
 // GET /api/google/calendar — estado de conexion
+export const maxDuration = 30;
+
 export async function GET() {
   try {
     await requireAuth();

@@ -6,6 +6,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
  * PUBLIC endpoint - no auth required.
  * Registers security events for an active evaluation.
  */
+export const maxDuration = 15;
+
 export async function POST(request: NextRequest, { params }: { params: { token: string } }) {
   try {
     const body = await request.json();

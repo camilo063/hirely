@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { removeDocumentoOnboarding } from '@/lib/services/onboarding.service';
 
 // DELETE — Eliminar documento de onboarding
+export const maxDuration = 10;
+
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

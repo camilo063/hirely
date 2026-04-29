@@ -3,6 +3,8 @@ import { decodeOAuthState } from '@/lib/utils/oauth-state';
 import { exchangeCandidateCodeForToken, getProfile } from '@/lib/integrations/linkedin.client';
 import { findOrCreateCandidato, createPublicAplicacion } from '@/lib/services/public-apply.service';
 
+export const maxDuration = 15;
+
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code');
   const state = request.nextUrl.searchParams.get('state');

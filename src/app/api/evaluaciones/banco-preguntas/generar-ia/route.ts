@@ -16,6 +16,8 @@ const generarPreguntasIASchema = z.object({
   instrucciones_adicionales: z.string().optional(),
 });
 
+export const maxDuration = 30;
+
 export async function POST(request: NextRequest) {
   try {
     await getOrgId(); // Validate auth

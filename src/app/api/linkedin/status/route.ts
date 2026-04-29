@@ -2,6 +2,8 @@ import { requireAuth, getOrgId, getUserId } from '@/lib/auth/middleware';
 import { getConnectionStatus } from '@/lib/services/linkedin.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 30;
+
 export async function GET() {
   try {
     await requireAuth();

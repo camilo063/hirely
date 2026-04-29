@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
 
+export const maxDuration = 10;
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();

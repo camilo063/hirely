@@ -4,6 +4,8 @@ import { guardarEvaluacionHumana } from '@/lib/services/scoring-dual.service';
 import { evaluacionHumanaSchema } from '@/lib/validations/entrevista.schema';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

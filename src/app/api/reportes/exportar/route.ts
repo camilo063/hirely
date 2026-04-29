@@ -8,6 +8,8 @@ import {
 import { apiError } from '@/lib/utils/api-response';
 import type { FiltrosReporte } from '@/lib/types/reportes.types';
 
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();

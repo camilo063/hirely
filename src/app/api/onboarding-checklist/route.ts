@@ -11,6 +11,8 @@ interface ChecklistPaso {
 
 const PASOS = ['empresa', 'vacante', 'candidato', 'email_template', 'portal_test'];
 
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     await requireAuth();

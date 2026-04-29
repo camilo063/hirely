@@ -14,6 +14,8 @@ import { emailContratadoTemplate } from '@/lib/utils/email-templates';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
 import { emitirNotificacion } from '@/lib/services/sse-clients';
 
+export const maxDuration = 10;
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

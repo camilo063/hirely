@@ -4,6 +4,8 @@ import { getAuthorizationUrl } from '@/lib/integrations/linkedin.client';
 import { apiError } from '@/lib/utils/api-response';
 import crypto from 'crypto';
 
+export const maxDuration = 30;
+
 export async function GET() {
   try {
     await requireAuth();

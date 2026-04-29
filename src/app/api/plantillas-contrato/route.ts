@@ -4,6 +4,8 @@ import { listPlantillas, createPlantilla } from '@/lib/services/contratos.servic
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { ValidationError } from '@/lib/utils/errors';
 
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     await requireAuth();

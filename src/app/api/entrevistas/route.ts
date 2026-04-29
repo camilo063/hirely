@@ -5,6 +5,8 @@ import { listEntrevistasHumanas, createEntrevistaHumana } from '@/lib/services/e
 import { entrevistaIACreateSchema, entrevistaHumanaCreateSchema } from '@/lib/validations/entrevista.schema';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 30;
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();

@@ -7,6 +7,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 
 const ALLOWED_LOGO_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
 
+export const maxDuration = 10;
+
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();

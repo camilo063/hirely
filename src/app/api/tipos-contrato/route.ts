@@ -3,6 +3,8 @@ import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { listTiposContrato, createTipoContrato } from '@/lib/services/tipos-contrato.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     await requireAuth();

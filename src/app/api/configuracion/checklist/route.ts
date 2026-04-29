@@ -4,6 +4,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { getOrgChecklist, updateOrgChecklist } from '@/lib/services/seleccion.service';
 
 // GET /api/configuracion/checklist — Get org document checklist
+export const maxDuration = 10;
+
 export async function GET() {
   try {
     await requireAuth();

@@ -12,6 +12,8 @@ import { emitirNotificacion } from '@/lib/services/sse-clients';
  * Webhook that Dapta calls when an interview call ends.
  * Receives the transcript and call data.
  */
+export const maxDuration = 30;
+
 export async function POST(request: NextRequest) {
   const ts = new Date().toISOString();
   console.log(`\n═══ [Dapta Webhook] Recibido ${ts} ═══`);

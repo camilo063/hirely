@@ -17,6 +17,8 @@ const MAX_BATCH = 50;
  * POST /api/evaluaciones/envio-masivo
  * Sends technical evaluations to all eligible candidates for a vacante.
  */
+export const maxDuration = 30;
+
 export async function POST(request: NextRequest) {
   try {
     const orgId = await getOrgId();

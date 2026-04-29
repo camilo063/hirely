@@ -3,6 +3,8 @@ import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { uploadDocumento } from '@/lib/services/onboarding.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

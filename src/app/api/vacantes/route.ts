@@ -5,6 +5,8 @@ import { vacanteCreateSchema } from '@/lib/validations/vacante.schema';
 import type { CreateVacanteInput } from '@/lib/types/vacante.types';
 import { apiResponse, apiError, paginatedResponse } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();

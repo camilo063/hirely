@@ -3,6 +3,8 @@ import { getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { obtenerEvaluacion, cancelarEvaluacion } from '@/lib/services/evaluacion-tecnica.service';
 
+export const maxDuration = 10;
+
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const orgId = await getOrgId();

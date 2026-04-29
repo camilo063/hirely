@@ -5,6 +5,8 @@ import { publishToLinkedIn, getLinkedInMode } from '@/lib/services/linkedin-publ
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { ValidationError } from '@/lib/utils/errors';
 
+export const maxDuration = 30;
+
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

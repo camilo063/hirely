@@ -5,6 +5,8 @@ import { requireAuth } from '@/lib/auth/middleware';
 
 // POST — Procesar emails de bienvenida programados
 // Callable via: manual button, Vercel Cron, or API key
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     // Check for Vercel Cron secret or API key

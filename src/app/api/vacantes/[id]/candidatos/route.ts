@@ -4,6 +4,8 @@ import { getAplicacionesByVacante, createAplicacion } from '@/lib/services/candi
 import { aplicacionCreateSchema } from '@/lib/validations/candidato.schema';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
+export const maxDuration = 10;
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

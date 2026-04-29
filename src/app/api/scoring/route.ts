@@ -15,6 +15,8 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
  * - tipo: 'dual' — Single dual scoring
  * - tipo: 'dual_batch' — Batch dual scoring
  */
+export const maxDuration = 30;
+
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();

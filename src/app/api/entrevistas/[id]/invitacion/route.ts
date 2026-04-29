@@ -5,6 +5,8 @@ import { pool } from '@/lib/db';
 import { enviarInvitacionEntrevista } from '@/lib/services/email.service';
 
 // POST /api/entrevistas/[id]/invitacion — Send interview invitation email
+export const maxDuration = 30;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

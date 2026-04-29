@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { procesarAplicacionPortal } from '@/lib/services/portal-vacantes.service';
 
+export const maxDuration = 15;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }

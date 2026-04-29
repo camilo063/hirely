@@ -5,6 +5,8 @@ import { uploadDocumentoPortal, getPortalData } from '@/lib/services/seleccion.s
 import { pool } from '@/lib/db';
 
 // POST /api/portal/documentos/[token]/upload — Public file upload (no auth required)
+export const maxDuration = 15;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
