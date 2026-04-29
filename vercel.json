@@ -1,4 +1,12 @@
 {
+  "functions": {
+    "src/app/api/notificaciones/sse/route.ts": {
+      "memory": 256
+    },
+    "src/app/api/**": {
+      "memory": 512
+    }
+  },
   "crons": [
     {
       "path": "/api/onboarding/procesar-programados",
