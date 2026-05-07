@@ -53,6 +53,8 @@ export interface Aplicacion {
   score_ia: number | null;
   score_humano: number | null;
   score_final: number | null;
+  score_ats_error: string | null;
+  score_ats_intentos: number;
   notas_internas: string | null;
   motivo_descarte: string | null;
   estados_completados: string[];

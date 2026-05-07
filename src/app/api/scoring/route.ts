@@ -15,17 +15,17 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
  * - tipo: 'dual' — Single dual scoring
  * - tipo: 'dual_batch' — Batch dual scoring
  */
-export const maxDuration = 30;
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
     const orgId = await getOrgId();
     const body = await request.json();
-    const { tipo, aplicacion_id, vacante_id } = body;
+    const { tipo, aplicacion_id, vacante_id, force } = body;
 
     if (tipo === 'ats_pipeline' && vacante_id) {
-      const result = await rescoreAllCandidatos(vacante_id, orgId);
+      const result = await rescoreAllCandidatos(vacante_id, orgId, { force: !!force });
       return apiResponse({
         ...result,
         message: `Scoring completado: ${result.exitosos}/${result.total} candidatos procesados`,

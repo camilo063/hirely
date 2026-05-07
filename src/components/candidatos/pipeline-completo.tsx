@@ -46,6 +46,7 @@ import {
   Zap, LayoutGrid, TableIcon, Filter, RefreshCw, Check, X,
   Loader2, Mail, Phone, MapPin, Linkedin, FileCheck, Users, UserCheck, FileText,
   MoreHorizontal, Eye, ArrowRight, ArrowLeft, XCircle, Brain, CheckCircle, Award,
+  AlertTriangle, ChevronDown,
 } from 'lucide-react';
 import { SelectorEstadoAplicacion } from '@/components/candidatos/selector-estado-aplicacion';
 
@@ -106,20 +107,39 @@ export function PipelineCompleto({
     }
   }
 
-  async function handleBulkScoring() {
+  async function handleBulkScoring(opts: { force?: boolean } = {}) {
+    const force = !!opts.force;
+    const pendientesCount = aplicaciones.filter(
+      (a) => a.score_ats === null || (a as any).score_ats_error,
+    ).length;
+    const totalCount = aplicaciones.length;
+
+    const objetivo = force ? totalCount : pendientesCount;
+    if (objetivo === 0) {
+      toast.info('No hay candidatos pendientes de calificar');
+      return;
+    }
+
+    const mensaje = force
+      ? `Recalcular el score de los ${totalCount} candidatos? Esto puede tomar unos minutos.`
+      : `Calificar ${pendientesCount} candidato(s) pendientes? Esto puede tomar unos minutos.`;
+    if (typeof window !== 'undefined' && !window.confirm(mensaje)) return;
+
     setScoringLoading(true);
     try {
       const res = await fetch('/api/scoring', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'ats_pipeline', vacante_id: vacanteId }),
+        body: JSON.stringify({ tipo: 'ats_pipeline', vacante_id: vacanteId, force }),
       });
       const data = await res.json();
       if (data.success) {
         const result = data.data;
-        if (result.exitosos === result.total) {
+        if (result.total === 0) {
+          toast.info('No hay candidatos para calificar');
+        } else if (result.exitosos === result.total) {
           toast.success('Scoring completado', {
-            description: `${result.total} candidatos evaluados correctamente`,
+            description: `${result.total} candidato(s) evaluados correctamente`,
           });
         } else if (result.exitosos > 0) {
           toast.warning('Scoring parcial', {
@@ -173,6 +193,9 @@ export function PipelineCompleto({
 
   const pasanCorte = aplicaciones.filter(a => a.score_ats !== null && Number(a.score_ats) >= scoreMinimo).length;
   const conScore = aplicaciones.filter(a => a.score_ats !== null).length;
+  const pendientesScore = aplicaciones.filter(
+    (a) => a.score_ats === null || (a as any).score_ats_error,
+  ).length;
 
   if (loading) return <TableSkeleton />;
 
@@ -182,21 +205,58 @@ export function PipelineCompleto({
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {aplicaciones.length} candidato(s) &middot; {conScore} evaluados
+          {pendientesScore > 0 && (
+            <> &middot; <span className="text-orange font-medium">{pendientesScore} pendientes</span></>
+          )}
         </p>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleBulkScoring}
-            disabled={scoringLoading}
-          >
-            {scoringLoading ? (
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            ) : (
-              <Zap className="h-4 w-4 mr-1" />
-            )}
-            {conScore > 0 ? 'Recalcular Scores' : 'Calcular Scores'}
-          </Button>
+          {pendientesScore > 0 ? (
+            <div className="flex">
+              <Button
+                size="sm"
+                onClick={() => handleBulkScoring({ force: false })}
+                disabled={scoringLoading}
+                className="bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white rounded-r-none"
+              >
+                {scoringLoading ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Zap className="h-4 w-4 mr-1" />
+                )}
+                Calificar pendientes ({pendientesScore})
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    disabled={scoringLoading}
+                    className="bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white rounded-l-none border-l border-white/30 px-2"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={() => handleBulkScoring({ force: true })}>
+                    <RefreshCw className="h-3.5 w-3.5 mr-2" /> Recalcular todos ({aplicaciones.length})
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleBulkScoring({ force: true })}
+              disabled={scoringLoading || aplicaciones.length === 0}
+            >
+              {scoringLoading ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-1" />
+              )}
+              Recalcular scores
+            </Button>
+          )}
           <div className="flex border rounded-md">
             <Button
               variant={viewMode === 'table' ? 'default' : 'ghost'}
@@ -310,8 +370,12 @@ export function PipelineCompleto({
                         )}
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="flex justify-center">
-                          <ScoreBadge score={app.score_ats !== null ? Number(app.score_ats) : null} size="sm" />
+                        <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+                          <ScoreCellInline
+                            aplicacion={app}
+                            rescoringId={rescoringId}
+                            onRescore={() => handleRescore(app.candidato_id)}
+                          />
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
@@ -782,5 +846,62 @@ function ContratoTabContent({
         <FileText className="h-4 w-4 mr-1" /> Generar contrato
       </Button>
     </div>
+  );
+}
+
+/**
+ * Celda inline que muestra el ScoreBadge cuando hay score, o un boton
+ * "Calificar con IA" cuando falta el score o hubo un error.
+ * Si se acaba de crear la aplicacion (< 2 min), muestra "Pendiente..." en
+ * vez del boton para evitar interferir con el scoring async en curso.
+ */
+function ScoreCellInline({
+  aplicacion,
+  rescoringId,
+  onRescore,
+}: {
+  aplicacion: AplicacionConCandidato;
+  rescoringId: string | null;
+  onRescore: () => void;
+}) {
+  const score = aplicacion.score_ats !== null ? Number(aplicacion.score_ats) : null;
+  const error = (aplicacion as any).score_ats_error as string | null | undefined;
+  const isLoading = rescoringId === aplicacion.candidato_id;
+
+  if (score !== null) {
+    return <ScoreBadge score={score} size="sm" />;
+  }
+
+  // Sin score: detectar si fue creada hace poco (esperando scoring async)
+  const createdAt = aplicacion.created_at ? new Date(aplicacion.created_at) : null;
+  const ageMs = createdAt ? Date.now() - createdAt.getTime() : Infinity;
+  const recienCreada = ageMs < 2 * 60 * 1000; // 2 minutos
+
+  if (recienCreada && !error) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-soft-gray px-2 py-1 rounded-full">
+        <Loader2 className="h-3 w-3 animate-spin" /> Calificando...
+      </span>
+    );
+  }
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={onRescore}
+      disabled={isLoading}
+      className="h-7 px-2 text-xs border-[#FF6B35]/40 text-[#FF6B35] hover:bg-[#FF6B35]/10 hover:text-[#FF6B35]"
+      title={error ? `Error previo: ${error}` : 'Calificar candidato con IA'}
+    >
+      {isLoading ? (
+        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+      ) : error ? (
+        <AlertTriangle className="h-3 w-3 mr-1" />
+      ) : (
+        <Zap className="h-3 w-3 mr-1" />
+      )}
+      Calificar con IA
+    </Button>
   );
 }

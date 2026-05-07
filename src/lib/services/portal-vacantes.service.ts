@@ -249,12 +249,37 @@ export async function procesarAplicacionPortal(params: {
     [vacante.id]
   );
 
-  // Auto-scoring (non-blocking)
+  // Auto-scoring asincrono (fire-and-forget) — el pipeline tarda 10-20s y
+  // excede el timeout del request del portal publico. Se dispara a un
+  // endpoint interno que tiene su propio maxDuration y guarda el error
+  // en score_ats_error si falla.
   try {
-    const { runScoringPipeline } = await import('./scoring-pipeline.service');
-    await runScoringPipeline(candidatoId, vacante.id, vacante.organization_id);
+    const { getInternalSecret } = await import('@/lib/utils/internal-secret');
+    const baseUrl = (() => {
+      try {
+        return getAppUrl();
+      } catch {
+        if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+        return 'http://localhost:3500';
+      }
+    })();
+
+    fetch(`${baseUrl}/api/internal/score-candidato`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        candidato_id: candidatoId,
+        vacante_id: vacante.id,
+        organizacion_id: vacante.organization_id,
+        secret: getInternalSecret(),
+      }),
+    }).catch((err) => {
+      console.error('[Portal] Error disparando scoring async:', err);
+    });
+
+    console.log(`[Portal] Scoring disparado async candidato=${candidatoId} vacante=${vacante.id}`);
   } catch (error) {
-    console.error('[Portal] Error en auto-scoring:', error);
+    console.error('[Portal] Error preparando scoring async:', error);
   }
 
   // Activity log
