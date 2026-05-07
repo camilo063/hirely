@@ -294,7 +294,7 @@ async function saveParsedCV(candidatoId: string, orgId: string, cvData: CVParsed
     [
       JSON.stringify(cvData),
       JSON.stringify(cvData.habilidades_tecnicas),
-      cvData.experiencia_total_anos || null,
+      cvData.experiencia_total_anos ? Math.round(cvData.experiencia_total_anos) : null,
       cvData.nivel_educativo_max || null,
       JSON.stringify(cvData.idiomas),
       JSON.stringify(cvData.certificaciones),
