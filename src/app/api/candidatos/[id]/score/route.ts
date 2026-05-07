@@ -28,8 +28,25 @@ export async function POST(
 
     // New pipeline mode: candidato + vacante
     if (vacante_id) {
-      const result = await runScoringPipeline(candidatoId, vacante_id, orgId);
-      return apiResponse(result);
+      try {
+        const result = await runScoringPipeline(candidatoId, vacante_id, orgId);
+        return apiResponse(result);
+      } catch (pipelineError: any) {
+        const msg = (pipelineError?.message || 'Error desconocido en scoring').toString();
+        console.error(`[Score Route] Pipeline fallo candidato=${candidatoId} vacante=${vacante_id}:`, pipelineError);
+        try {
+          await pool.query(
+            `UPDATE aplicaciones SET
+               score_ats_error = $1,
+               score_ats_intentos = COALESCE(score_ats_intentos, 0) + 1
+             WHERE candidato_id = $2 AND vacante_id = $3`,
+            [msg.substring(0, 500), candidatoId, vacante_id]
+          );
+        } catch (dbErr) {
+          console.error('[Score Route] No se pudo persistir score_ats_error:', dbErr);
+        }
+        throw pipelineError;
+      }
     }
 
     // Legacy mode: aplicacion_id

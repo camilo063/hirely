@@ -57,6 +57,10 @@ export async function runScoringPipeline(
   if (needsParsing) {
     console.log(`[Scoring] Re-parseo necesario: parser_version=${cvParsed?.parser_version}, confianza=${cvParsed?.confianza}, tiene_cv_url=${!!candidato.cv_url}`);
     if (candidato.cv_url) {
+      // CRITICO: si hay cv_url, el parseo con Claude DEBE funcionar.
+      // No caer al fallback silencioso (parseCVFromLinkedIn -> buildCVFromRawData)
+      // porque eso genera scores basura sin que el admin se entere.
+      // Excepcion: si Claude no esta configurado, usar fallback (no es un bug, es config faltante).
       try {
         console.log(`[Scoring] Descargando PDF desde ${String(candidato.cv_url).substring(0, 80)}...`);
         const pdfBase64 = await pdfUrlToBase64(candidato.cv_url);
@@ -64,16 +68,22 @@ export async function runScoringPipeline(
         cvParsed = await parseCVFromPDF(pdfBase64, candidatoId, orgId);
         console.log(`[Scoring] CV parseado con Claude: confianza=${cvParsed?.confianza}, habilidades=${cvParsed?.habilidades_tecnicas?.length}, version=${cvParsed?.parser_version}`);
       } catch (error: any) {
-        const msg = error.message || '';
+        const msg = error?.message || '';
         if (msg.includes('ANTHROPIC_API_KEY')) {
-          console.warn(`[Scoring Pipeline] Claude API no configurada — usando scoring basico para ${candidatoId}`);
+          // Caso especial: Claude no configurado -> permitir fallback con warning
+          console.warn(`[Scoring] Claude API no configurada — usando datos del formulario para ${candidatoId}`);
+          cvParsed = await parseCVFromLinkedIn(candidatoId, orgId);
         } else {
-          console.error(`[Scoring Pipeline] Error parseando PDF de ${candidatoId}:`, error);
+          // Cualquier otro error: PROPAGAR para que quede en score_ats_error
+          console.error(`[Scoring] ERROR CRITICO parseando PDF de ${candidatoId} (cv_url=${String(candidato.cv_url).substring(0, 80)}):`, error);
+          throw new Error(`Error parseando CV PDF: ${msg || String(error)}`);
         }
-        cvParsed = await parseCVFromLinkedIn(candidatoId, orgId);
       }
+    } else if (candidato.fuente === 'linkedin' || candidato.linkedin_url) {
+      console.log(`[Scoring] Sin cv_url, candidato con datos LinkedIn -> parseCVFromLinkedIn`);
+      cvParsed = await parseCVFromLinkedIn(candidatoId, orgId);
     } else {
-      console.log(`[Scoring] Sin cv_url, usando parseCVFromLinkedIn (puede caer en buildCVFromRawData fallback)`);
+      console.warn(`[Scoring] ADVERTENCIA: candidato ${candidatoId} sin cv_url ni LinkedIn. Score sera basado solo en datos del formulario.`);
       cvParsed = await parseCVFromLinkedIn(candidatoId, orgId);
     }
   } else {
