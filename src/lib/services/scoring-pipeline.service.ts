@@ -47,19 +47,22 @@ export async function runScoringPipeline(
 
   // 2. Parsear CV si no esta parseado o esta incompleto
   let cvParsed = candidato.cv_parsed;
+  const confianzaBaja = typeof cvParsed?.confianza === 'number' && cvParsed.confianza < 0.5;
   const needsParsing = !cvParsed?.parsed_at ||
                        !cvParsed?.habilidades_tecnicas?.length ||
-                       cvParsed?.parser_version === '1.0-fallback';
+                       cvParsed?.parser_version === '1.0-fallback' ||
+                       cvParsed?.parser_version === '1.0-minimal' ||
+                       confianzaBaja;
 
   if (needsParsing) {
-    console.log(`[Scoring] CV requiere parseo (parsed_at=${cvParsed?.parsed_at}, version=${cvParsed?.parser_version})`);
+    console.log(`[Scoring] Re-parseo necesario: parser_version=${cvParsed?.parser_version}, confianza=${cvParsed?.confianza}, tiene_cv_url=${!!candidato.cv_url}`);
     if (candidato.cv_url) {
       try {
-        console.log(`[Scoring] Descargando PDF desde ${candidato.cv_url}`);
+        console.log(`[Scoring] Descargando PDF desde ${String(candidato.cv_url).substring(0, 80)}...`);
         const pdfBase64 = await pdfUrlToBase64(candidato.cv_url);
         console.log(`[Scoring] PDF descargado (${Math.round(pdfBase64.length / 1024)}KB base64), invocando Claude para parseo`);
         cvParsed = await parseCVFromPDF(pdfBase64, candidatoId, orgId);
-        console.log(`[Scoring] CV parseado: ${Object.keys(cvParsed || {}).length} campos extraidos`);
+        console.log(`[Scoring] CV parseado con Claude: confianza=${cvParsed?.confianza}, habilidades=${cvParsed?.habilidades_tecnicas?.length}, version=${cvParsed?.parser_version}`);
       } catch (error: any) {
         const msg = error.message || '';
         if (msg.includes('ANTHROPIC_API_KEY')) {
@@ -70,8 +73,11 @@ export async function runScoringPipeline(
         cvParsed = await parseCVFromLinkedIn(candidatoId, orgId);
       }
     } else {
+      console.log(`[Scoring] Sin cv_url, usando parseCVFromLinkedIn (puede caer en buildCVFromRawData fallback)`);
       cvParsed = await parseCVFromLinkedIn(candidatoId, orgId);
     }
+  } else {
+    console.log(`[Scoring] CV ya parseado correctamente (version=${cvParsed?.parser_version}, confianza=${cvParsed?.confianza}), saltando re-parseo`);
   }
 
   if (!cvParsed || !cvParsed.nombre) {
@@ -191,7 +197,18 @@ export async function rescoreAllCandidatos(
     : `SELECT a.candidato_id FROM aplicaciones a
        JOIN candidatos c ON c.id = a.candidato_id
        WHERE a.vacante_id = $1 AND c.organization_id = $2
-         AND (a.score_ats IS NULL OR a.score_ats_error IS NOT NULL)`;
+         AND (
+           a.score_ats IS NULL
+           OR a.score_ats_error IS NOT NULL
+           OR (
+             c.cv_url IS NOT NULL
+             AND (
+               c.cv_parsed->>'parser_version' = '1.0-fallback'
+               OR c.cv_parsed->>'parser_version' = '1.0-minimal'
+               OR (c.cv_parsed->>'confianza')::numeric < 0.5
+             )
+           )
+         )`;
 
   const aplicaciones = await pool.query(query, [vacanteId, orgId]);
 
