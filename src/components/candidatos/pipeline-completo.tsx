@@ -110,7 +110,10 @@ export function PipelineCompleto({
   async function handleBulkScoring(opts: { force?: boolean } = {}) {
     const force = !!opts.force;
     const pendientesCount = aplicaciones.filter(
-      (a) => a.score_ats === null || (a as any).score_ats_error,
+      (a) =>
+        a.score_ats === null ||
+        (a as any).score_ats_error ||
+        (a.candidato?.cv_url && isCvFallback(a.candidato?.cv_parsed)),
     ).length;
     const totalCount = aplicaciones.length;
 
@@ -193,8 +196,15 @@ export function PipelineCompleto({
 
   const pasanCorte = aplicaciones.filter(a => a.score_ats !== null && Number(a.score_ats) >= scoreMinimo).length;
   const conScore = aplicaciones.filter(a => a.score_ats !== null).length;
+  const estimadosScore = aplicaciones.filter(
+    (a) => a.score_ats !== null && a.candidato?.cv_url && isCvFallback(a.candidato?.cv_parsed),
+  ).length;
+  const evaluadosScore = conScore - estimadosScore;
   const pendientesScore = aplicaciones.filter(
-    (a) => a.score_ats === null || (a as any).score_ats_error,
+    (a) =>
+      a.score_ats === null ||
+      (a as any).score_ats_error ||
+      (a.candidato?.cv_url && isCvFallback(a.candidato?.cv_parsed)),
   ).length;
 
   if (loading) return <TableSkeleton />;
@@ -204,9 +214,12 @@ export function PipelineCompleto({
       {/* Header bar */}
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {aplicaciones.length} candidato(s) &middot; {conScore} evaluados
-          {pendientesScore > 0 && (
-            <> &middot; <span className="text-orange font-medium">{pendientesScore} pendientes</span></>
+          {aplicaciones.length} candidato(s) &middot; {evaluadosScore} evaluados
+          {estimadosScore > 0 && (
+            <> &middot; <span className="text-amber-600 font-medium">{estimadosScore} estimados</span></>
+          )}
+          {(pendientesScore - estimadosScore) > 0 && (
+            <> &middot; <span className="text-orange font-medium">{pendientesScore - estimadosScore} pendientes</span></>
           )}
         </p>
         <div className="flex items-center gap-2">
@@ -223,7 +236,9 @@ export function PipelineCompleto({
                 ) : (
                   <Zap className="h-4 w-4 mr-1" />
                 )}
-                Calificar pendientes ({pendientesScore})
+                {estimadosScore > 0 && (pendientesScore - estimadosScore) === 0
+                  ? `Recalificar con CV (${estimadosScore})`
+                  : `Calificar pendientes (${pendientesScore})`}
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -379,8 +394,22 @@ export function PipelineCompleto({
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        {app.score_ats !== null && (
-                          Number(app.score_ats) >= scoreMinimo ? (
+                        {app.score_ats !== null && (() => {
+                          const fb = app.candidato?.cv_url && isCvFallback(app.candidato?.cv_parsed);
+                          const pasa = Number(app.score_ats) >= scoreMinimo;
+                          if (fb) {
+                            return (
+                              <Badge
+                                variant="outline"
+                                className="text-xs text-amber-700 border-amber-300 bg-amber-50 gap-1"
+                                title="Score estimado sin CV — recalifica para confirmar"
+                              >
+                                <AlertTriangle className="h-3 w-3" />
+                                {pasa ? 'Pasa (estimado)' : 'No pasa (estimado)'}
+                              </Badge>
+                            );
+                          }
+                          return pasa ? (
                             <Badge variant="outline" className="text-xs text-success border-success/30 gap-1">
                               <Check className="h-3 w-3" /> Pasa
                             </Badge>
@@ -388,8 +417,8 @@ export function PipelineCompleto({
                             <Badge variant="outline" className="text-xs text-red-500 border-red-200 gap-1">
                               <X className="h-3 w-3" /> No pasa
                             </Badge>
-                          )
-                        )}
+                          );
+                        })()}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <SelectorEstadoAplicacion
@@ -725,7 +754,13 @@ function CandidatoDetailPanel({
           )}
         </TabsContent>
         <TabsContent value="cv" className="mt-4">
-          <CvParsedView cvParsed={candidato.cv_parsed as any} compact />
+          <CvParsedView
+            cvParsed={candidato.cv_parsed as any}
+            cvUrl={candidato.cv_url}
+            compact
+            onAnalizarConIA={onRescore}
+            analizando={rescoringId === candidato.id}
+          />
         </TabsContent>
         {aplicacion.estado === 'seleccionado' && (
           <TabsContent value="documentos" className="mt-4">
@@ -855,6 +890,18 @@ function ContratoTabContent({
  * Si se acaba de crear la aplicacion (< 2 min), muestra "Pendiente..." en
  * vez del boton para evitar interferir con el scoring async en curso.
  */
+/**
+ * Devuelve true si el cv_parsed del candidato proviene del fallback
+ * (sin pasar por Claude/IA) o tiene baja confianza, o si no esta parseado.
+ */
+function isCvFallback(cvParsed: any): boolean {
+  if (!cvParsed || !cvParsed.parsed_at) return false; // sin parsear aun: NO es fallback, solo "sin score"
+  if (cvParsed.parser_version === '1.0-fallback') return true;
+  if (cvParsed.parser_version === '1.0-minimal') return true;
+  if (typeof cvParsed.confianza === 'number' && cvParsed.confianza < 0.5) return true;
+  return false;
+}
+
 function ScoreCellInline({
   aplicacion,
   rescoringId,
@@ -867,7 +914,37 @@ function ScoreCellInline({
   const score = aplicacion.score_ats !== null ? Number(aplicacion.score_ats) : null;
   const error = (aplicacion as any).score_ats_error as string | null | undefined;
   const isLoading = rescoringId === aplicacion.candidato_id;
+  const fallback = isCvFallback(aplicacion.candidato?.cv_parsed);
+  const tieneCv = !!aplicacion.candidato?.cv_url;
 
+  // Score existe pero es estimado (fallback) y hay PDF disponible: ofrecer recalificar
+  if (score !== null && fallback && tieneCv) {
+    return (
+      <div className="inline-flex items-center gap-1.5">
+        <ScoreBadge score={score} size="sm" />
+        <span title="Score estimado sin CV. Califica con IA para obtener un score preciso.">
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onRescore}
+          disabled={isLoading}
+          className="h-6 px-2 text-[11px] border-amber-400 text-amber-700 hover:bg-amber-50"
+          title="Recalificar usando el CV real"
+        >
+          {isLoading ? (
+            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3 w-3 mr-1" />
+          )}
+          Recalificar
+        </Button>
+      </div>
+    );
+  }
+
+  // Score existe y es confiable
   if (score !== null) {
     return <ScoreBadge score={score} size="sm" />;
   }
