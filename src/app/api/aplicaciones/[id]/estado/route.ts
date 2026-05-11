@@ -12,7 +12,6 @@ import { createContrato, autoPoblarDatos } from '@/lib/services/contratos.servic
 import { enviarEmail } from '@/lib/services/email.service';
 import { emailContratadoTemplate } from '@/lib/utils/email-templates';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
-import { emitirNotificacion } from '@/lib/services/sse-clients';
 
 export const maxDuration = 10;
 
@@ -135,44 +134,20 @@ export async function PATCH(
       try {
         const candidatoNombreSel = `${app.candidato_nombre} ${app.candidato_apellido || ''}`.trim();
         const vacanteIdSel = updatedResult.rows[0]?.vacante_id;
-        const notifPipeline = await crearNotificacion({
+        await crearNotificacion({
           organizacionId: orgId,
           tipo: 'pipeline_estado_cambiado',
           titulo: 'Pipeline actualizado',
           mensaje: `${candidatoNombreSel} cambio a documentos_pendientes`,
           meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdSel}/candidatos` },
         });
-        if (notifPipeline) {
-          emitirNotificacion(orgId, {
-            type: 'notificacion',
-            id: notifPipeline.id,
-            tipo: 'pipeline_estado_cambiado',
-            titulo: 'Pipeline actualizado',
-            mensaje: `${candidatoNombreSel} cambio a documentos_pendientes`,
-            browser_activo: notifPipeline.browser_activo,
-            meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdSel}/candidatos` },
-            created_at: new Date().toISOString(),
-          });
-        }
-        const notifSel = await crearNotificacion({
+        await crearNotificacion({
           organizacionId: orgId,
           tipo: 'candidato_seleccionado',
           titulo: 'Candidato seleccionado',
           mensaje: `${candidatoNombreSel} fue seleccionado`,
           meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdSel}/candidatos` },
         });
-        if (notifSel) {
-          emitirNotificacion(orgId, {
-            type: 'notificacion',
-            id: notifSel.id,
-            tipo: 'candidato_seleccionado',
-            titulo: 'Candidato seleccionado',
-            mensaje: `${candidatoNombreSel} fue seleccionado`,
-            browser_activo: notifSel.browser_activo,
-            meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdSel}/candidatos` },
-            created_at: new Date().toISOString(),
-          });
-        }
       } catch (e) {
         console.error('[notificacion] Error:', e);
       }
@@ -450,47 +425,23 @@ export async function PATCH(
     try {
       const candidatoNombreNotif = `${app.candidato_nombre} ${app.candidato_apellido || ''}`.trim();
       const vacanteIdNotif = result.rows[0]?.vacante_id;
-      const notif = await crearNotificacion({
+      await crearNotificacion({
         organizacionId: orgId,
         tipo: 'pipeline_estado_cambiado',
         titulo: 'Pipeline actualizado',
         mensaje: `${candidatoNombreNotif} cambio a ${nuevoEstado}`,
         meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdNotif}/candidatos` },
       });
-      if (notif) {
-        emitirNotificacion(orgId, {
-          type: 'notificacion',
-          id: notif.id,
-          tipo: 'pipeline_estado_cambiado',
-          titulo: 'Pipeline actualizado',
-          mensaje: `${candidatoNombreNotif} cambio a ${nuevoEstado}`,
-          browser_activo: notif.browser_activo,
-          meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdNotif}/candidatos` },
-          created_at: new Date().toISOString(),
-        });
-      }
 
       // Additional notification for 'contratado'
       if (nuevoEstado === 'contratado') {
-        const notifCont = await crearNotificacion({
+        await crearNotificacion({
           organizacionId: orgId,
           tipo: 'candidato_contratado',
           titulo: 'Candidato contratado',
           mensaje: `${candidatoNombreNotif} fue contratado`,
           meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdNotif}/candidatos` },
         });
-        if (notifCont) {
-          emitirNotificacion(orgId, {
-            type: 'notificacion',
-            id: notifCont.id,
-            tipo: 'candidato_contratado',
-            titulo: 'Candidato contratado',
-            mensaje: `${candidatoNombreNotif} fue contratado`,
-            browser_activo: notifCont.browser_activo,
-            meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdNotif}/candidatos` },
-            created_at: new Date().toISOString(),
-          });
-        }
       }
     } catch (e) {
       console.error('[notificacion] Error:', e);

@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
 import { pool } from '@/lib/db';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
-import { emitirNotificacion } from '@/lib/services/sse-clients';
 
 /**
  * Webhook receiver for firma providers (SignWell, DocuSign, etc.)
@@ -87,25 +86,13 @@ export async function POST(request: NextRequest) {
         const candidatoNombreFirma = contratoInfo.rows.length > 0
           ? `${contratoInfo.rows[0].candidato_nombre} ${contratoInfo.rows[0].candidato_apellido || ''}`.trim()
           : 'Candidato';
-        const notif = await crearNotificacion({
+        await crearNotificacion({
           organizacionId: organization_id,
           tipo: 'contrato_firmado_bilateral',
           titulo: 'Contrato firmado',
           mensaje: `${candidatoNombreFirma} firmo el contrato`,
           meta: { contrato_id: id, url: `/contratos/${id}` },
         });
-        if (notif) {
-          emitirNotificacion(organization_id, {
-            type: 'notificacion',
-            id: notif.id,
-            tipo: 'contrato_firmado_bilateral',
-            titulo: 'Contrato firmado',
-            mensaje: `${candidatoNombreFirma} firmo el contrato`,
-            browser_activo: notif.browser_activo,
-            meta: { contrato_id: id, url: `/contratos/${id}` },
-            created_at: new Date().toISOString(),
-          });
-        }
       } catch (e) {
         console.error('[notificacion] Error:', e);
       }

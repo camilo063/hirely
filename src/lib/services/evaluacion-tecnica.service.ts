@@ -4,7 +4,6 @@ import { getAppUrl } from '@/lib/utils/url';
 import { seleccionarPreguntas } from './banco-preguntas.service';
 import { calcularScoreEvaluacion } from './evaluacion-scoring.service';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
-import { emitirNotificacion } from '@/lib/services/sse-clients';
 import type {
   Evaluacion,
   EstructuraPlantilla,
@@ -329,25 +328,13 @@ export async function guardarRespuestas(
       [ev.candidato_id]
     );
     const candNombreNotif = candInfoNotif.rows[0]?.candidato_nombre || 'Candidato';
-    const notif = await crearNotificacion({
+    await crearNotificacion({
       organizacionId: ev.organization_id,
       tipo: 'evaluacion_tecnica_completada',
       titulo: 'Evaluacion tecnica completada',
       mensaje: `${candNombreNotif} completo la evaluacion`,
       meta: { evaluacion_id: ev.id, url: `/evaluaciones/${ev.id}` },
     });
-    if (notif) {
-      emitirNotificacion(ev.organization_id, {
-        type: 'notificacion',
-        id: notif.id,
-        tipo: 'evaluacion_tecnica_completada',
-        titulo: 'Evaluacion tecnica completada',
-        mensaje: `${candNombreNotif} completo la evaluacion`,
-        browser_activo: notif.browser_activo,
-        meta: { evaluacion_id: ev.id, url: `/evaluaciones/${ev.id}` },
-        created_at: new Date().toISOString(),
-      });
-    }
   } catch (e) {
     console.error('[notificacion] Error:', e);
   }

@@ -8,7 +8,6 @@ import {
 import { PLANTILLAS_CONTRATO_DEFAULT, renderPlantillaContrato } from '../utils/plantillas-contrato-default';
 import { NotFoundError } from '../utils/errors';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
-import { emitirNotificacion } from '@/lib/services/sse-clients';
 
 // ─── LIST / GET ──────────────────────────────────
 
@@ -229,25 +228,13 @@ export async function createContrato(
       const candNombre = candResult.rows.length > 0
         ? `${candResult.rows[0].candidato_nombre} ${candResult.rows[0].candidato_apellido || ''}`.trim()
         : 'Candidato';
-      const notif = await crearNotificacion({
+      await crearNotificacion({
         organizacionId: orgId,
         tipo: 'contrato_generado',
         titulo: 'Contrato generado',
         mensaje: `Contrato borrador creado para ${candNombre}`,
         meta: { contrato_id: contrato.id, url: `/contratos/${contrato.id}` },
       });
-      if (notif) {
-        emitirNotificacion(orgId, {
-          type: 'notificacion',
-          id: notif.id,
-          tipo: 'contrato_generado',
-          titulo: 'Contrato generado',
-          mensaje: `Contrato borrador creado para ${candNombre}`,
-          browser_activo: notif.browser_activo,
-          meta: { contrato_id: contrato.id, url: `/contratos/${contrato.id}` },
-          created_at: new Date().toISOString(),
-        });
-      }
     } catch (e) {
       console.error('[notificacion] Error:', e);
     }
