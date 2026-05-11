@@ -4,7 +4,6 @@ import { createDaptaClient } from '@/lib/integrations/dapta.client';
 import type { DaptaWebhookPayload } from '@/lib/types/entrevista.types';
 import { pool } from '@/lib/db';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
-import { emitirNotificacion } from '@/lib/services/sse-clients';
 
 /**
  * POST /api/webhooks/dapta
@@ -97,25 +96,13 @@ export async function POST(request: NextRequest) {
         );
         if (entrevData.rows.length > 0) {
           const ent = entrevData.rows[0];
-          const notif = await crearNotificacion({
+          await crearNotificacion({
             organizacionId: ent.organization_id,
             tipo: 'entrevista_dapta_completada',
             titulo: 'Entrevista IA completada',
             mensaje: `Resultados disponibles para ${ent.candidato_nombre}`,
             meta: { entrevista_id: ent.id, url: '/entrevistas' },
           });
-          if (notif) {
-            emitirNotificacion(ent.organization_id, {
-              type: 'notificacion',
-              id: notif.id,
-              tipo: 'entrevista_dapta_completada',
-              titulo: 'Entrevista IA completada',
-              mensaje: `Resultados disponibles para ${ent.candidato_nombre}`,
-              browser_activo: notif.browser_activo,
-              meta: { entrevista_id: ent.id, url: '/entrevistas' },
-              created_at: new Date().toISOString(),
-            });
-          }
         }
       } else if (payload.call_id) {
         const entrevData = await pool.query(
@@ -129,25 +116,13 @@ export async function POST(request: NextRequest) {
         );
         if (entrevData.rows.length > 0) {
           const ent = entrevData.rows[0];
-          const notif = await crearNotificacion({
+          await crearNotificacion({
             organizacionId: ent.organization_id,
             tipo: 'entrevista_dapta_completada',
             titulo: 'Entrevista IA completada',
             mensaje: `Resultados disponibles para ${ent.candidato_nombre}`,
             meta: { entrevista_id: ent.id, url: '/entrevistas' },
           });
-          if (notif) {
-            emitirNotificacion(ent.organization_id, {
-              type: 'notificacion',
-              id: notif.id,
-              tipo: 'entrevista_dapta_completada',
-              titulo: 'Entrevista IA completada',
-              mensaje: `Resultados disponibles para ${ent.candidato_nombre}`,
-              browser_activo: notif.browser_activo,
-              meta: { entrevista_id: ent.id, url: '/entrevistas' },
-              created_at: new Date().toISOString(),
-            });
-          }
         }
       }
     } catch (e) {

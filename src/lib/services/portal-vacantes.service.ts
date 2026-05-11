@@ -2,7 +2,6 @@ import { pool } from '@/lib/db';
 import { getAppUrl } from '@/lib/utils/url';
 import { resolveUrl } from '@/lib/integrations/s3';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
-import { emitirNotificacion } from '@/lib/services/sse-clients';
 
 // --- Types ---
 
@@ -303,25 +302,13 @@ export async function procesarAplicacionPortal(params: {
 
   // Notificacion en tiempo real
   try {
-    const notif = await crearNotificacion({
+    await crearNotificacion({
       organizacionId: vacante.organization_id,
       tipo: 'nueva_aplicacion',
       titulo: 'Nueva aplicacion recibida',
       mensaje: `${params.nombre} aplico a ${vacante.titulo}`,
       meta: { aplicacion_id: aplicacionId, candidato_id: candidatoId, vacante_id: vacante.id, url: `/vacantes/${vacante.id}/candidatos` },
     });
-    if (notif) {
-      emitirNotificacion(vacante.organization_id, {
-        type: 'notificacion',
-        id: notif.id,
-        tipo: 'nueva_aplicacion',
-        titulo: 'Nueva aplicacion recibida',
-        mensaje: `${params.nombre} aplico a ${vacante.titulo}`,
-        browser_activo: notif.browser_activo,
-        meta: { aplicacion_id: aplicacionId, candidato_id: candidatoId, vacante_id: vacante.id, url: `/vacantes/${vacante.id}/candidatos` },
-        created_at: new Date().toISOString(),
-      });
-    }
   } catch (e) {
     console.error('[notificacion] Error:', e);
   }

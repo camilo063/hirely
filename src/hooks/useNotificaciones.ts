@@ -23,12 +23,24 @@ interface UseNotificacionesReturn {
   solicitarPermisoNavegador: () => Promise<void>;
 }
 
+const POLL_INTERVAL_MS = 20000;
+const MAX_NOTIFICACIONES = 50;
+
+interface PollResponse {
+  notificaciones: Notificacion[];
+  no_leidas: number;
+  timestamp: string;
+}
+
 export function useNotificaciones(): UseNotificacionesReturn {
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
   const [noLeidas, setNoLeidas] = useState(0);
   const [loading, setLoading] = useState(true);
   const [permisoNavegador, setPermisoNavegador] = useState<NotificationPermission | null>(null);
-  const esRef = useRef<EventSource | null>(null);
+
+  const ultimoTimestampRef = useRef<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -36,50 +48,104 @@ export function useNotificaciones(): UseNotificacionesReturn {
     }
   }, []);
 
-  useEffect(() => {
-    const es = new EventSource('/api/notificaciones/sse');
-    esRef.current = es;
+  const doPoll = useCallback(async (isInitial: boolean) => {
+    if (pollingRef.current) return;
+    pollingRef.current = true;
+    try {
+      const url = isInitial || !ultimoTimestampRef.current
+        ? '/api/notificaciones/poll'
+        : `/api/notificaciones/poll?desde=${encodeURIComponent(ultimoTimestampRef.current)}`;
 
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+      const res = await fetch(url);
+      if (!res.ok) {
+        if (isInitial) setLoading(false);
+        return;
+      }
+      const data: PollResponse = await res.json();
+      ultimoTimestampRef.current = data.timestamp;
 
-        if (data.type === 'init') {
-          const list: Notificacion[] = data.notificaciones;
-          setNotificaciones(list);
-          setNoLeidas(list.filter(n => !n.leida).length);
-          setLoading(false);
-        } else if (data.type === 'notificacion') {
-          const nueva: Notificacion = data;
-          setNotificaciones(prev => [nueva, ...prev].slice(0, 50));
-          setNoLeidas(prev => prev + 1);
+      if (isInitial) {
+        setNotificaciones(data.notificaciones);
+        setNoLeidas(data.no_leidas);
+        setLoading(false);
+        return;
+      }
 
-          if (
-            data.browser_activo &&
-            typeof window !== 'undefined' &&
-            'Notification' in window &&
-            Notification.permission === 'granted'
-          ) {
-            new Notification(`Hirely — ${data.titulo}`, {
-              body: data.mensaje,
-              icon: '/favicon.ico',
-              tag: data.id,
-            });
-          }
+      if (data.notificaciones.length > 0) {
+        setNotificaciones(prev => {
+          const existentes = new Set(prev.map(n => n.id));
+          const nuevas = data.notificaciones.filter(n => !existentes.has(n.id));
+          if (nuevas.length === 0) return prev;
+          return [...nuevas, ...prev].slice(0, MAX_NOTIFICACIONES);
+        });
+
+        if (
+          typeof window !== 'undefined' &&
+          'Notification' in window &&
+          Notification.permission === 'granted'
+        ) {
+          data.notificaciones.forEach(n => {
+            if (n.browser_activo) {
+              new Notification(`Hirely — ${n.titulo}`, {
+                body: n.mensaje,
+                icon: '/favicon.ico',
+                tag: n.id,
+              });
+            }
+          });
         }
-      } catch (e) {
-        console.error('[useNotificaciones] Error parseando SSE:', e);
+      }
+
+      setNoLeidas(data.no_leidas);
+    } catch (e) {
+      console.error('[useNotificaciones] Error polling:', e);
+      if (isInitial) setLoading(false);
+    } finally {
+      pollingRef.current = false;
+    }
+  }, []);
+
+  const startInterval = useCallback(() => {
+    if (intervalRef.current) return;
+    intervalRef.current = setInterval(() => {
+      doPoll(false);
+    }, POLL_INTERVAL_MS);
+  }, [doPoll]);
+
+  const stopInterval = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    doPoll(true).then(() => {
+      if (typeof document !== 'undefined' && !document.hidden) {
+        startInterval();
+      }
+    });
+
+    return () => {
+      stopInterval();
+    };
+  }, [doPoll, startInterval, stopInterval]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stopInterval();
+      } else {
+        doPoll(false);
+        startInterval();
       }
     };
 
-    es.onerror = () => {
-      setLoading(false);
-    };
-
-    return () => {
-      esRef.current?.close();
-    };
-  }, []);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [doPoll, startInterval, stopInterval]);
 
   const marcarLeida = useCallback(async (id: string) => {
     setNotificaciones(prev =>
