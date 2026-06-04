@@ -455,19 +455,29 @@ export default function CandidatoDetailPage() {
               ) : (
                 <div className="space-y-6">
                   {docsGroups.map((group) => {
-                    const allVerified = group.documentos.length > 0 && group.documentos.every(d => d.estado === 'verificado');
-                    const showAvanzar = allVerified && ['documentos_pendientes', 'seleccionado'].includes(group.aplicacionEstado);
+                    const requiredDocs = group.documentos.filter(d => d.requerido);
+                    const allRequiredVerified = requiredDocs.length === 0
+                      ? group.documentos.some(d => d.estado === 'subido' || d.estado === 'verificado')
+                      : requiredDocs.every(d => d.estado === 'verificado');
+                    const showAvanzar = group.documentos.length > 0 && allRequiredVerified && ['documentos_pendientes', 'seleccionado'].includes(group.aplicacionEstado);
                     return (
                       <div key={group.aplicacionId} className="border rounded-lg overflow-hidden">
                         <div className="bg-soft-gray/50 px-4 py-2.5 flex items-center justify-between border-b">
                           <span className="text-sm font-semibold text-navy">{group.vacanteTitulo}</span>
-                          <Badge variant="outline" className="text-[10px]">{group.aplicacionEstado.replace(/_/g, ' ')}</Badge>
+                          <div className="flex items-center gap-2">
+                            {requiredDocs.length > 0 && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {requiredDocs.filter(d => d.estado === 'verificado').length}/{requiredDocs.length} obligatorios verificados
+                              </span>
+                            )}
+                            <Badge variant="outline" className="text-[10px]">{group.aplicacionEstado.replace(/_/g, ' ')}</Badge>
+                          </div>
                         </div>
                         {showAvanzar && (
                           <div className="px-4 py-2.5 bg-green-50 border-b border-green-200 flex items-center justify-between">
                             <div className="flex items-center gap-2 text-green-700">
                               <CheckCircle2 className="h-4 w-4" />
-                              <span className="text-sm font-medium">Todos los documentos verificados</span>
+                              <span className="text-sm font-medium">Documentos obligatorios verificados</span>
                             </div>
                             <Button
                               size="sm"
@@ -506,7 +516,10 @@ export default function CandidatoDetailPage() {
                             {group.documentos.map((doc) => (
                               <tr key={doc.id} className="border-b last:border-0 hover:bg-soft-gray/30 transition-colors">
                                 <td className="px-4 py-2.5">
-                                  <p className="font-medium text-sm">{doc.label}</p>
+                                  <p className="font-medium text-sm">
+                                    {doc.label}
+                                    {doc.requerido && <span className="text-orange-500 text-[10px] ml-1" title="Obligatorio">*</span>}
+                                  </p>
                                   {doc.nota_rechazo && <p className="text-xs text-red-500 mt-0.5">Motivo: {doc.nota_rechazo}</p>}
                                 </td>
                                 <td className="px-4 py-2.5 text-center">
