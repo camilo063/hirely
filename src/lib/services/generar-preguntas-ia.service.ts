@@ -110,7 +110,7 @@ function parseAndValidate(text: string): PreguntaGenerada[] {
 }
 
 export async function generarPreguntasConIA(config: GenerarPreguntasConfig): Promise<PreguntaGenerada[]> {
-  const client = new AnthropicClient();
+  const client = new AnthropicClient({ model: 'claude-haiku-4-5-20251001' });
   if (!client.isConfigured()) {
     throw new Error('ANTHROPIC_API_KEY no configurada');
   }
