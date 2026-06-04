@@ -11,12 +11,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { TableSkeleton } from '@/components/shared/loading-skeleton';
 import { toast } from 'sonner';
 import {
-  Plus, FileText, Edit2, Archive, Trash2, Info,
+  Plus, FileText, Archive, Trash2, Info, Eye, RefreshCw,
+  CheckCircle2, Circle, Clock, Hash, Award,
 } from 'lucide-react';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from '@/components/ui/sheet';
-import type { EvaluacionPlantilla, EstructuraPlantilla, Dificultad, CategoriaConteo } from '@/lib/types/evaluacion-tecnica.types';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import type { EvaluacionPlantilla, EstructuraPlantilla, CategoriaConteo } from '@/lib/types/evaluacion-tecnica.types';
 
 const DIFICULTAD_COLORS: Record<string, string> = {
   basico: 'bg-green-100 text-green-700',
@@ -26,12 +30,39 @@ const DIFICULTAD_COLORS: Record<string, string> = {
   mixta: 'bg-purple-100 text-purple-700',
 };
 
+const TIPO_LABELS: Record<string, string> = {
+  opcion_multiple: 'Opción múltiple',
+  verdadero_falso: 'Verdadero / Falso',
+  respuesta_abierta: 'Respuesta abierta',
+  codigo: 'Código',
+};
+
+interface PreguntaPreview {
+  pregunta_id: string;
+  enunciado: string;
+  tipo: string;
+  opciones: Array<{ id: string; texto: string; es_correcta: boolean }> | null;
+  respuesta_correcta: string | null;
+  explicacion: string | null;
+  puntos: number;
+  orden: number;
+  categoria: string;
+  dificultad: string;
+  tiempo_estimado_segundos: number;
+}
+
 export default function PlantillasPage() {
   const [plantillas, setPlantillas] = useState<EvaluacionPlantilla[]>([]);
   const [categorias, setCategorias] = useState<CategoriaConteo[]>([]);
   const [loading, setLoading] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<EvaluacionPlantilla | null>(null);
+
+  // Preview state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewTarget, setPreviewTarget] = useState<EvaluacionPlantilla | null>(null);
+  const [previewPreguntas, setPreviewPreguntas] = useState<PreguntaPreview[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Form state
   const [nombre, setNombre] = useState('');
@@ -67,6 +98,39 @@ export default function PlantillasPage() {
       const data = await res.json();
       if (data.success) setCategorias(data.data || []);
     } catch { /* ignore */ }
+  }
+
+  async function loadPreview(plantilla: EvaluacionPlantilla) {
+    const est: EstructuraPlantilla[] = typeof plantilla.estructura === 'string'
+      ? JSON.parse(plantilla.estructura)
+      : plantilla.estructura;
+
+    setPreviewLoading(true);
+    setPreviewPreguntas([]);
+    try {
+      const res = await fetch('/api/evaluaciones/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estructura: est.filter(e => e.categoria) }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPreviewPreguntas(data.data.preguntas);
+      } else {
+        toast.error(data.error || 'Error cargando preview');
+      }
+    } catch {
+      toast.error('Error de red');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function handlePreview(e: React.MouseEvent, p: EvaluacionPlantilla) {
+    e.stopPropagation();
+    setPreviewTarget(p);
+    setPreviewOpen(true);
+    loadPreview(p);
   }
 
   function handleNew() {
@@ -142,6 +206,11 @@ export default function PlantillasPage() {
   const totalPuntos = estructura.reduce((s, e) => s + e.cantidad * e.puntos_por_pregunta, 0);
   const totalPreguntas = estructura.reduce((s, e) => s + e.cantidad, 0);
 
+  const previewEst: EstructuraPlantilla[] = previewTarget
+    ? (typeof previewTarget.estructura === 'string' ? JSON.parse(previewTarget.estructura) : previewTarget.estructura)
+    : [];
+  const previewTotalPuntos = previewEst.reduce((s, e) => s + e.cantidad * e.puntos_por_pregunta, 0);
+
   return (
     <div className="animate-fade-in">
       <Breadcrumbs />
@@ -185,9 +254,25 @@ export default function PlantillasPage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <CardTitle className="text-base">{p.nombre}</CardTitle>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={(e) => { e.stopPropagation(); handleArchive(p.id); }}>
-                      <Archive className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
+                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        title="Ver borrador"
+                        onClick={(e) => handlePreview(e, p)}
+                      >
+                        <Eye className="h-3.5 w-3.5 text-teal" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        onClick={(e) => { e.stopPropagation(); handleArchive(p.id); }}
+                      >
+                        <Archive className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    </div>
                   </div>
                   {p.descripcion && <p className="text-xs text-muted-foreground">{p.descripcion}</p>}
                 </CardHeader>
@@ -322,6 +407,144 @@ export default function PlantillasPage() {
           </form>
         </SheetContent>
       </Sheet>
+
+      {/* Dialog: preview borrador */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
+            <DialogTitle className="text-lg">{previewTarget?.nombre}</DialogTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Borrador — selección aleatoria de preguntas del banco
+            </p>
+            {/* Stats */}
+            <div className="flex gap-4 mt-3">
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Hash className="h-3.5 w-3.5" />
+                <span>{previewPreguntas.length} preguntas</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" />
+                <span>{previewTarget?.duracion_minutos} min</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Award className="h-3.5 w-3.5" />
+                <span>Aprueba {previewTarget?.puntaje_aprobatorio}% · {previewTotalPuntos} pts total</span>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* Question list */}
+          <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+            {previewLoading ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+                <RefreshCw className="h-6 w-6 animate-spin" />
+                <p className="text-sm">Seleccionando preguntas...</p>
+              </div>
+            ) : previewPreguntas.length === 0 ? (
+              <div className="text-center py-12 text-sm text-muted-foreground">
+                No hay preguntas disponibles para esta estructura.
+              </div>
+            ) : (
+              previewPreguntas.map((p, i) => (
+                <div key={p.pregunta_id} className="border rounded-lg p-4 bg-white space-y-3">
+                  {/* Header */}
+                  <div className="flex items-start gap-3">
+                    <span className="text-xs font-semibold text-muted-foreground mt-0.5 shrink-0 w-5">{i + 1}.</span>
+                    <div className="flex-1 space-y-2">
+                      <p className="text-sm font-medium leading-snug">{p.enunciado}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge variant="outline" className="text-[10px]">{p.categoria}</Badge>
+                        <Badge className={`${DIFICULTAD_COLORS[p.dificultad]} text-[10px] border-0`}>{p.dificultad}</Badge>
+                        <Badge variant="secondary" className="text-[10px]">{TIPO_LABELS[p.tipo] ?? p.tipo}</Badge>
+                        <span className="text-[10px] text-muted-foreground self-center">{p.puntos} pts · ~{Math.round(p.tiempo_estimado_segundos / 60)} min</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Options for opcion_multiple */}
+                  {p.tipo === 'opcion_multiple' && p.opciones && (
+                    <div className="ml-8 space-y-1.5">
+                      {p.opciones.map((op) => (
+                        <div
+                          key={op.id}
+                          className={`flex items-start gap-2 rounded-md px-3 py-2 text-sm ${
+                            op.es_correcta
+                              ? 'bg-green-50 border border-green-200 text-green-800'
+                              : 'bg-gray-50 border border-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {op.es_correcta
+                            ? <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                            : <Circle className="h-4 w-4 text-gray-300 shrink-0 mt-0.5" />
+                          }
+                          <span>{op.id.toUpperCase()}. {op.texto}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Verdadero/falso */}
+                  {p.tipo === 'verdadero_falso' && (
+                    <div className="ml-8 flex gap-2">
+                      {['Verdadero', 'Falso'].map((label) => {
+                        const isCorrect =
+                          p.respuesta_correcta?.toLowerCase() === label.toLowerCase() ||
+                          (label === 'Verdadero' && p.respuesta_correcta === 'true') ||
+                          (label === 'Falso' && p.respuesta_correcta === 'false');
+                        return (
+                          <div
+                            key={label}
+                            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm border ${
+                              isCorrect
+                                ? 'bg-green-50 border-green-200 text-green-800'
+                                : 'bg-gray-50 border-gray-100 text-gray-500'
+                            }`}
+                          >
+                            {isCorrect ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> : <Circle className="h-3.5 w-3.5 text-gray-300" />}
+                            {label}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Respuesta abierta / código */}
+                  {(p.tipo === 'respuesta_abierta' || p.tipo === 'codigo') && p.respuesta_correcta && (
+                    <div className="ml-8 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                      <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide mb-1">Guía de evaluación</p>
+                      <p className="text-xs text-amber-900 leading-relaxed">{p.respuesta_correcta}</p>
+                    </div>
+                  )}
+
+                  {/* Explicación */}
+                  {p.explicacion && (
+                    <div className="ml-8 text-xs text-muted-foreground italic border-l-2 border-gray-200 pl-2">
+                      {p.explicacion}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 py-4 border-t shrink-0 flex justify-between items-center">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={previewLoading || !previewTarget}
+              onClick={() => previewTarget && loadPreview(previewTarget)}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${previewLoading ? 'animate-spin' : ''}`} />
+              Regenerar selección
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPreviewOpen(false)}>
+              Cerrar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
