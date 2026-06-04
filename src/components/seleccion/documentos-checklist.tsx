@@ -112,7 +112,11 @@ export function DocumentosChecklist({ aplicacionId, portalToken, onComplete }: P
 
   const subidos = documentos.filter(d => d.estado === 'subido' || d.estado === 'verificado').length;
   const verificados = documentos.filter(d => d.estado === 'verificado').length;
-  const progressPercent = Math.round((subidos / documentos.length) * 100);
+  const requeridos = documentos.filter(d => d.requerido);
+  const requeridosSubidos = requeridos.filter(d => d.estado === 'subido' || d.estado === 'verificado').length;
+  const progressPercent = requeridos.length > 0
+    ? Math.round((requeridosSubidos / requeridos.length) * 100)
+    : 100;
 
   return (
     <Card>
@@ -123,7 +127,7 @@ export function DocumentosChecklist({ aplicacionId, portalToken, onComplete }: P
             {completo ? (
               <Badge className="bg-success/15 text-success">Completos</Badge>
             ) : (
-              <Badge variant="outline">{subidos}/{documentos.length} subidos</Badge>
+              <Badge variant="outline">{requeridosSubidos}/{requeridos.length} obligatorios</Badge>
             )}
             {portalUrl && (
               <Button
@@ -143,7 +147,7 @@ export function DocumentosChecklist({ aplicacionId, portalToken, onComplete }: P
         </div>
         <Progress value={progressPercent} className="h-1.5 mt-2" />
         <p className="text-xs text-muted-foreground mt-1">
-          {verificados} verificado(s) de {documentos.length} total
+          {verificados} verificado(s) · {subidos} subido(s) de {documentos.length} total ({requeridos.length} obligatorios)
         </p>
       </CardHeader>
       <CardContent className="space-y-2">
