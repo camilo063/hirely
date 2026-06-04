@@ -4,8 +4,9 @@
  * 1. Parsear CVs en PDF -> datos estructurados
  * 2. Analisis inteligente de matching candidato-vacante
  *
- * Usa claude-sonnet-4-20250514 para balance costo/calidad.
- * anthropic-version: 2024-10-22 para soporte de type:"document" (PDFs nativos).
+ * Usa claude-haiku-4-5-20251001 para generación de preguntas (rápido, estructurado).
+ * Usa claude-sonnet-4-6 para parsing de CVs y scoring (mejor razonamiento).
+ * anthropic-version: 2023-06-01, beta pdfs-2024-09-25 para PDFs nativos.
  */
 
 interface AnthropicConfig {
@@ -42,7 +43,7 @@ export class AnthropicClient {
   constructor(config?: Partial<AnthropicConfig>) {
     this.config = {
       apiKey: config?.apiKey || process.env.ANTHROPIC_API_KEY || '',
-      model: config?.model || 'claude-sonnet-4-20250514',
+      model: config?.model || 'claude-sonnet-4-6',
       apiVersion: config?.apiVersion || '2023-06-01',
       betaFeatures: config?.betaFeatures || 'pdfs-2024-09-25',
     };
@@ -65,6 +66,7 @@ export class AnthropicClient {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers,
+      signal: AbortSignal.timeout(55000),
       body: JSON.stringify({
         model: this.config.model,
         max_tokens: options?.maxTokens || 4096,
