@@ -429,17 +429,19 @@ export async function verificarDocumento(
 async function checkDocumentosCompleteness(aplicacionId: string, orgId: string): Promise<void> {
   const checklist = await getChecklistDocumentos(aplicacionId, orgId);
 
-  if (checklist.completo) {
-    // Check if all required are specifically verified (not just uploaded)
-    const allVerified = checklist.documentos
+  // documentos_completos = true when all required docs are at least uploaded (subido|verificado).
+  // Verification is a separate step — a recruiter verifying one doc should NOT reset the flag
+  // to false just because the remaining required docs haven't been verified yet.
+  // Only set false when a required doc is rejected or still pending.
+  const allRequiredUploaded = checklist.documentos.length > 0 &&
+    checklist.documentos
       .filter(d => d.requerido)
-      .every(d => d.estado === 'verificado');
+      .every(d => d.estado === 'subido' || d.estado === 'verificado');
 
-    await pool.query(
-      `UPDATE aplicaciones SET documentos_completos = $2, updated_at = NOW() WHERE id = $1`,
-      [aplicacionId, allVerified]
-    );
-  }
+  await pool.query(
+    `UPDATE aplicaciones SET documentos_completos = $2, updated_at = NOW() WHERE id = $1`,
+    [aplicacionId, allRequiredUploaded]
+  );
 }
 
 // ─── PORTAL (PUBLIC) ──────────────────────────
