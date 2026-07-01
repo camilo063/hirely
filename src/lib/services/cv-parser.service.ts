@@ -103,7 +103,7 @@ export async function parseCVFromPDF(
       pdfBase64,
       CV_PARSER_SYSTEM_PROMPT,
       CV_PARSER_USER_PROMPT,
-      2048
+      8000
     );
   } catch (error: any) {
     const msg = error.message || '';
