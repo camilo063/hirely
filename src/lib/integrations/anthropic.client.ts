@@ -66,7 +66,7 @@ export class AnthropicClient {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers,
-      signal: AbortSignal.timeout(55000),
+      signal: AbortSignal.timeout(110000),
       body: JSON.stringify({
         model: this.config.model,
         max_tokens: options?.maxTokens || 4096,
@@ -95,7 +95,8 @@ export class AnthropicClient {
   async parseDocument(
     pdfBase64: string,
     systemPrompt: string,
-    userPrompt: string
+    userPrompt: string,
+    maxTokens?: number
   ): Promise<string> {
     return this.complete(systemPrompt, [
       {
@@ -115,7 +116,7 @@ export class AnthropicClient {
           },
         ],
       },
-    ], { useBeta: true });
+    ], { useBeta: true, maxTokens });
   }
 
   /**

@@ -1,5 +1,5 @@
 import { pool } from '@/lib/db';
-import { createAnthropicClient } from '@/lib/integrations/anthropic.client';
+import { AnthropicClient, createAnthropicClient } from '@/lib/integrations/anthropic.client';
 import { pdfUrlToBase64 } from '@/lib/utils/pdf-extract';
 import { parseJsonResponse } from '@/lib/utils/parse-json-response';
 import type { CVParsedData } from '@/lib/types/scoring.types';
@@ -88,10 +88,12 @@ export async function parseCVFromPDF(
   candidatoId: string,
   orgId: string
 ): Promise<CVParsedData> {
-  const client = createAnthropicClient();
-  if (!client) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('Claude API no esta configurado. Configura ANTHROPIC_API_KEY.');
   }
+
+  // Haiku is 3-5x faster than Sonnet for structured extraction — CV JSON fits in 2048 tokens
+  const client = new AnthropicClient({ model: 'claude-haiku-4-5-20251001' });
 
   let responseText: string;
 
@@ -100,7 +102,8 @@ export async function parseCVFromPDF(
     responseText = await client.parseDocument(
       pdfBase64,
       CV_PARSER_SYSTEM_PROMPT,
-      CV_PARSER_USER_PROMPT
+      CV_PARSER_USER_PROMPT,
+      2048
     );
   } catch (error: any) {
     const msg = error.message || '';
