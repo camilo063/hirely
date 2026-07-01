@@ -134,7 +134,7 @@ function scoreExperiencia(cv: CVParsedData, experienciaMinima: number, peso: num
     gaps.push(`Experiencia insuficiente: ${anosExperiencia} ano(s) vs. ${experienciaMinima} requerido(s)`);
   }
 
-  if (cv.experiencia.length >= 3) {
+  if ((cv.experiencia || []).length >= 3) {
     score = Math.min(100, score + 5);
     matches.push(`${cv.experiencia.length} posiciones previas`);
   }
@@ -160,9 +160,9 @@ function scoreHabilidades(cv: CVParsedData, requeridas: string[], peso: number):
   }
 
   const candidatoSkills = [
-    ...cv.habilidades_tecnicas,
-    ...cv.keywords,
-    ...cv.experiencia.flatMap(e => e.tecnologias || []),
+    ...(cv.habilidades_tecnicas || []),
+    ...(cv.keywords || []),
+    ...(cv.experiencia || []).flatMap(e => e.tecnologias || []),
   ].map(s => s.toLowerCase().trim());
 
   const candidatoSkillsSet = new Set(candidatoSkills);
@@ -230,9 +230,9 @@ function scoreEducacion(cv: CVParsedData, nivelRequerido: string, peso: number):
     gaps.push(`Nivel educativo inferior: ${cv.nivel_educativo_max || 'No especificado'} vs. ${nivelRequerido} requerido`);
   }
 
-  if (cv.educacion.length > 1) {
+  if ((cv.educacion || []).length > 1) {
     score = Math.min(100, score + 5);
-    matches.push(`${cv.educacion.length} formaciones academicas`);
+    matches.push(`${(cv.educacion || []).length} formaciones academicas`);
   }
 
   return {
@@ -252,12 +252,12 @@ function scoreIdiomas(cv: CVParsedData, requeridos: string[], peso: number): Dim
   const gaps: string[] = [];
 
   if (requeridos.length === 0) {
-    const bonus = cv.idiomas.length > 1 ? 15 : 0;
+    const bonus = (cv.idiomas || []).length > 1 ? 15 : 0;
     const s = 70 + bonus;
-    return { score: s, peso, ponderado: Math.round(s * peso), detalle: 'Sin requisito de idiomas', matches: cv.idiomas.map(i => `${i.idioma} (${i.nivel})`), gaps: [] };
+    return { score: s, peso, ponderado: Math.round(s * peso), detalle: 'Sin requisito de idiomas', matches: (cv.idiomas || []).map(i => `${i.idioma} (${i.nivel})`), gaps: [] };
   }
 
-  const candidatoIdiomas = cv.idiomas.map(i => i.idioma.toLowerCase());
+  const candidatoIdiomas = (cv.idiomas || []).map(i => i.idioma.toLowerCase());
 
   let matchCount = 0;
   for (const req of requeridos) {
@@ -280,12 +280,12 @@ function scoreCertificaciones(cv: CVParsedData, requeridas: string[], peso: numb
   const gaps: string[] = [];
 
   if (requeridas.length === 0) {
-    const bonus = cv.certificaciones.length * 10;
+    const bonus = (cv.certificaciones || []).length * 10;
     const score = Math.min(100, 60 + bonus);
-    return { score, peso, ponderado: Math.round(score * peso), detalle: `${cv.certificaciones.length} certificacion(es) encontrada(s)`, matches: cv.certificaciones.map(c => c.nombre), gaps: [] };
+    return { score, peso, ponderado: Math.round(score * peso), detalle: `${(cv.certificaciones || []).length} certificacion(es) encontrada(s)`, matches: (cv.certificaciones || []).map(c => c.nombre), gaps: [] };
   }
 
-  const candidatoCerts = cv.certificaciones.map(c => c.nombre.toLowerCase());
+  const candidatoCerts = (cv.certificaciones || []).map(c => c.nombre.toLowerCase());
 
   let matchCount = 0;
   for (const req of requeridas) {
@@ -311,12 +311,12 @@ function scoreKeywords(cv: CVParsedData, keywordsRequeridos: string[], peso: num
   }
 
   const cvFullText = [
-    ...cv.keywords,
-    ...cv.habilidades_tecnicas,
-    ...cv.habilidades_blandas,
-    ...cv.experiencia.map(e => `${e.cargo} ${e.descripcion}`),
-    ...cv.educacion.map(e => `${e.titulo} ${e.campo_estudio}`),
-    cv.resumen_profesional,
+    ...(cv.keywords || []),
+    ...(cv.habilidades_tecnicas || []),
+    ...(cv.habilidades_blandas || []),
+    ...(cv.experiencia || []).map(e => `${e.cargo} ${e.descripcion || ''}`),
+    ...(cv.educacion || []).map(e => `${e.titulo} ${e.campo_estudio}`),
+    cv.resumen_profesional || '',
   ].join(' ').toLowerCase();
 
   let matchCount = 0;

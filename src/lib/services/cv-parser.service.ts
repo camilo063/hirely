@@ -16,18 +16,19 @@ import type { CVParsedData } from '@/lib/types/scoring.types';
  * en candidatos.cv_parsed (JSONB) para scoring posterior.
  */
 
-const CV_PARSER_SYSTEM_PROMPT = `Eres un experto en recursos humanos y analisis de hojas de vida. Tu trabajo es extraer datos estructurados de CVs/hojas de vida de forma precisa y completa.
+const CV_PARSER_SYSTEM_PROMPT = `Eres un experto en recursos humanos y analisis de hojas de vida. Tu trabajo es extraer datos estructurados de CVs/hojas de vida de forma precisa y CONCISA.
 
 REGLAS:
-- Extrae TODOS los datos disponibles, no omitas nada
+- Extrae los datos clave, priorizando brevedad sobre exhaustividad
 - Si un dato no esta presente, usa null (no inventes datos)
 - Para experiencia, calcula la duracion en meses basandote en las fechas
-- Para idiomas, infiere el nivel basandote en contexto (certificaciones, estudios en ese idioma, etc.)
-- Para habilidades tecnicas, extrae tecnologias, herramientas, frameworks y lenguajes mencionados
+- descripcion de cada experiencia: MAXIMO 15 palabras, enfocate en el impacto principal
+- Para idiomas, infiere el nivel basandote en contexto
+- Para habilidades tecnicas, extrae tecnologias, herramientas, frameworks y lenguajes
 - Normaliza nombres de tecnologias (ej: "JS" -> "JavaScript", "React.js" -> "React")
-- El campo "keywords" debe incluir TODOS los terminos tecnicos y relevantes del CV
-- Genera un resumen_profesional conciso (2-3 oraciones) del perfil del candidato
-- El campo "confianza" (0-1) indica que tan completa y clara es la informacion extraida
+- El campo "keywords" debe incluir los terminos tecnicos mas relevantes (max 30)
+- Genera un resumen_profesional de 1 oracion corta
+- El campo "confianza" (0-1) indica que tan completa es la informacion extraida
 
 RESPONDE UNICAMENTE con un objeto JSON valido, sin markdown, sin backticks, sin texto adicional.`;
 
