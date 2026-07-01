@@ -34,6 +34,7 @@ interface AnthropicContentBlock {
 interface AnthropicResponse {
   id: string;
   content: { type: string; text: string }[];
+  stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | string;
   usage: { input_tokens: number; output_tokens: number };
 }
 
@@ -82,6 +83,9 @@ export class AnthropicClient {
     }
 
     const data: AnthropicResponse = await response.json();
+    if (data.stop_reason === 'max_tokens') {
+      console.warn(`[Anthropic] Respuesta truncada por max_tokens (${options?.maxTokens || 4096} tokens). Usar maxTokens mayor.`);
+    }
     return data.content
       .filter(block => block.type === 'text')
       .map(block => block.text)
