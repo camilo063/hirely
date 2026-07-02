@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
+import { cached, invalidate, cacheKeys } from '@/lib/cache';
 
 // Configuracion de scoring a nivel organizacion:
 //  - peso_ia / peso_humano: ponderacion del score dual (entrevista IA vs evaluacion humana)
@@ -16,19 +17,23 @@ export async function GET() {
     await requireAuth();
     const orgId = await getOrgId();
 
-    const result = await pool.query(
-      `SELECT peso_ia, peso_humano, umbral_preseleccion
-       FROM org_settings WHERE organization_id = $1`,
-      [orgId]
-    );
+    const config = await cached(cacheKeys.scoringConfig(orgId), async () => {
+      const result = await pool.query(
+        `SELECT peso_ia, peso_humano, umbral_preseleccion
+         FROM org_settings WHERE organization_id = $1`,
+        [orgId]
+      );
 
-    const row = result.rows[0] || {};
-    return apiResponse({
-      peso_ia: row.peso_ia != null ? Number(row.peso_ia) : DEFAULTS.peso_ia,
-      peso_humano: row.peso_humano != null ? Number(row.peso_humano) : DEFAULTS.peso_humano,
-      umbral_preseleccion:
-        row.umbral_preseleccion != null ? Number(row.umbral_preseleccion) : DEFAULTS.umbral_preseleccion,
+      const row = result.rows[0] || {};
+      return {
+        peso_ia: row.peso_ia != null ? Number(row.peso_ia) : DEFAULTS.peso_ia,
+        peso_humano: row.peso_humano != null ? Number(row.peso_humano) : DEFAULTS.peso_humano,
+        umbral_preseleccion:
+          row.umbral_preseleccion != null ? Number(row.umbral_preseleccion) : DEFAULTS.umbral_preseleccion,
+      };
     });
+
+    return apiResponse(config);
   } catch (error) {
     return apiError(error);
   }
@@ -77,6 +82,7 @@ export async function PATCH(request: NextRequest) {
       values
     );
 
+    await invalidate(cacheKeys.scoringConfig(orgId));
     return apiResponse({ success: true });
   } catch (error) {
     return apiError(error);

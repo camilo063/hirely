@@ -1,5 +1,6 @@
 import { pool } from '@/lib/db';
 import { UUID } from '@/lib/types/common.types';
+import { cached, cacheKeys, invalidateTiposContrato } from '@/lib/cache';
 
 export interface TipoContratoRow {
   id: UUID;
@@ -23,13 +24,15 @@ function slugify(text: string): string {
 }
 
 export async function listTiposContrato(orgId: UUID, onlyActive = true): Promise<TipoContratoRow[]> {
-  const result = await pool.query(
-    `SELECT * FROM tipos_contrato
-     WHERE organization_id = $1 ${onlyActive ? 'AND is_active = true' : ''}
-     ORDER BY is_system DESC, nombre ASC`,
-    [orgId]
-  );
-  return result.rows;
+  return cached(cacheKeys.tiposContrato(orgId, onlyActive), async () => {
+    const result = await pool.query(
+      `SELECT * FROM tipos_contrato
+       WHERE organization_id = $1 ${onlyActive ? 'AND is_active = true' : ''}
+       ORDER BY is_system DESC, nombre ASC`,
+      [orgId]
+    );
+    return result.rows;
+  });
 }
 
 export async function getTipoContrato(orgId: UUID, id: UUID): Promise<TipoContratoRow | null> {
@@ -60,6 +63,7 @@ export async function createTipoContrato(
      RETURNING *`,
     [orgId, data.nombre, slug, data.descripcion || null]
   );
+  await invalidateTiposContrato(orgId);
   return result.rows[0];
 }
 
@@ -82,6 +86,7 @@ export async function updateTipoContrato(
      RETURNING *`,
     [nombre, descripcion, isActive, id, orgId]
   );
+  await invalidateTiposContrato(orgId);
   return result.rows[0];
 }
 
@@ -101,6 +106,7 @@ export async function deleteTipoContrato(orgId: UUID, id: UUID): Promise<void> {
       'UPDATE tipos_contrato SET is_active = false, updated_at = NOW() WHERE id = $1 AND organization_id = $2',
       [id, orgId]
     );
+    await invalidateTiposContrato(orgId);
     return;
   }
 
@@ -108,6 +114,7 @@ export async function deleteTipoContrato(orgId: UUID, id: UUID): Promise<void> {
     'DELETE FROM tipos_contrato WHERE id = $1 AND organization_id = $2',
     [id, orgId]
   );
+  await invalidateTiposContrato(orgId);
 }
 
 export async function seedDefaultTiposForOrg(orgId: UUID): Promise<void> {
@@ -127,4 +134,5 @@ export async function seedDefaultTiposForOrg(orgId: UUID): Promise<void> {
       [orgId, d.nombre, d.slug, d.descripcion]
     );
   }
+  await invalidateTiposContrato(orgId);
 }
