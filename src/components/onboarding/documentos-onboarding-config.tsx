@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { FileText, Link2, Plus, Trash2, Upload, Loader2, ExternalLink } from 'lucide-react';
+import { FileText, Link2, Plus, Trash2, Upload, Loader2, ExternalLink, Copy } from 'lucide-react';
 
 interface DocOnboarding {
   id: string;
@@ -95,6 +95,18 @@ export function DocumentosOnboardingConfig() {
       setDocs(prev => prev.filter(d => d.id !== docId));
     } catch {
       toast.error('Error al eliminar documento');
+    }
+  };
+
+  const stableLink = (docId: string) =>
+    `${typeof window !== 'undefined' ? window.location.origin : ''}/api/onboarding/documentos/${docId}/download`;
+
+  const handleCopyLink = async (docId: string) => {
+    try {
+      await navigator.clipboard.writeText(stableLink(docId));
+      toast.success('Link copiado');
+    } catch {
+      toast.error('No se pudo copiar el link');
     }
   };
 
@@ -215,6 +227,10 @@ export function DocumentosOnboardingConfig() {
         </div>
       ) : (
         <div className="space-y-2">
+          <p className="text-xs text-muted-foreground rounded-md bg-muted/50 px-3 py-2">
+            Sube el archivo y copia su link para pegarlo en la plantilla del email
+            (Plantilla de email de bienvenida). El link no expira.
+          </p>
           {docs.map(doc => (
             <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
               <div className="flex items-center gap-3 min-w-0">
@@ -224,9 +240,21 @@ export function DocumentosOnboardingConfig() {
                   {doc.descripcion && (
                     <p className="text-xs text-muted-foreground truncate">{doc.descripcion}</p>
                   )}
+                  <p className="text-[11px] text-muted-foreground font-mono truncate">
+                    /api/onboarding/documentos/{doc.id}/download
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0"
+                  title="Copiar link"
+                  onClick={() => handleCopyLink(doc.id)}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0" asChild>
                   <a href={doc.url} target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="h-3.5 w-3.5" />

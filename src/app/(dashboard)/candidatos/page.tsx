@@ -30,19 +30,17 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { ScoreBadge } from '@/components/candidatos/score-badge';
 import type { CandidatoEnriquecido } from '@/lib/types/candidato.types';
 import { getFuenteColor, getEstadoColor } from '@/lib/utils/design-tokens';
+import { PIPELINE_STATES_CONFIG } from '@/lib/constants/pipeline-states';
 import { useDebounce } from '@/hooks/use-debounce';
 import { toast } from 'sonner';
 
-const ESTADO_OPTIONS = [
-  { value: 'nuevo', label: 'Nuevo' },
-  { value: 'revisado', label: 'Revisado' },
-  { value: 'preseleccionado', label: 'Preseleccionado' },
-  { value: 'entrevista_ia', label: 'Entrevista IA' },
-  { value: 'entrevista_humana', label: 'Entrevista Humana' },
-  { value: 'seleccionado', label: 'Seleccionado' },
-  { value: 'contratado', label: 'Contratado' },
-  { value: 'descartado', label: 'Descartado' },
-];
+// Derivado de la maquina de estados para incluir SIEMPRE todos los estados
+// posibles (nuevo, en_revision, ..., contratado, contrato_terminado, descartado)
+// y mantenerse en sync con el pipeline.
+const ESTADO_OPTIONS = PIPELINE_STATES_CONFIG.map((s) => ({
+  value: s.key,
+  label: s.label,
+}));
 
 const SCORE_OPTIONS = [
   { value: 'excelente', label: 'Excelente (≥85)' },

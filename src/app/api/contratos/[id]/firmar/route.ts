@@ -2,8 +2,6 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId, getUserId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
 import { enviarParaFirma } from '@/lib/services/firma-electronica.service';
-import { enviarEmail } from '@/lib/services/email.service';
-import { emailOnboardingTemplate } from '@/lib/utils/email-templates';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 
 // POST — Enviar contrato para firma electronica
@@ -101,30 +99,10 @@ export async function PATCH(
       );
     } catch { /* non-blocking */ }
 
-    // 4. Disparar email de onboarding al candidato
-    let onboardingEnviado = false;
-    try {
-      if (contrato.candidato_email) {
-        const candidatoNombre = `${contrato.candidato_nombre} ${contrato.candidato_apellido || ''}`.trim();
-        const emailData = emailOnboardingTemplate({
-          candidatoNombre,
-          vacanteTitulo: contrato.vacante_titulo,
-          empresaNombre: contrato.org_nombre,
-        });
-
-        await enviarEmail({
-          to: contrato.candidato_email,
-          subject: emailData.subject,
-          html: emailData.htmlBody,
-        });
-        onboardingEnviado = true;
-        console.log('[FIRMA] Email onboarding enviado a:', contrato.candidato_email);
-      }
-    } catch (emailError) {
-      console.error('[FIRMA] Error enviando email de onboarding:', emailError);
-    }
-
-    // 5. Crear registro de onboarding si no existe
+    // 4. Onboarding: el registro y el email de bienvenida se manejan al pasar a
+    //    'contratado' (paso previo a la firma), desde la plantilla configurable.
+    //    Aqui solo dejamos una red de seguridad: si por alguna via no existe el
+    //    registro, lo creamos como 'pendiente' (sin enviar email para no duplicar).
     try {
       const existente = await pool.query(
         `SELECT id FROM onboarding WHERE aplicacion_id = $1 LIMIT 1`,
@@ -139,15 +117,12 @@ export async function PATCH(
         if (candidatoId) {
           await pool.query(
             `INSERT INTO onboarding (aplicacion_id, candidato_id, organization_id, fecha_inicio,
-              email_bienvenida_estado, email_bienvenida_enviado_at)
-             VALUES ($1, $2, $3, NOW(), $4, $5)`,
-            [
-              contrato.aplicacion_id, candidatoId, orgId,
-              onboardingEnviado ? 'enviado' : 'pendiente',
-              onboardingEnviado ? new Date().toISOString() : null,
-            ]
+              email_bienvenida_estado)
+             VALUES ($1, $2, $3, NOW(), 'pendiente')
+             ON CONFLICT (aplicacion_id) DO NOTHING`,
+            [contrato.aplicacion_id, candidatoId, orgId]
           );
-          console.log('[FIRMA] Registro de onboarding creado');
+          console.log('[FIRMA] Registro de onboarding creado (red de seguridad, pendiente)');
         }
       }
     } catch (onbError) {
@@ -156,10 +131,7 @@ export async function PATCH(
 
     return apiResponse({
       estado: 'firmado',
-      onboardingEnviado,
-      message: onboardingEnviado
-        ? 'Contrato firmado. Email de onboarding enviado al candidato.'
-        : 'Contrato firmado. El email de onboarding no se pudo enviar.',
+      message: 'Contrato firmado correctamente.',
     });
   } catch (error) {
     return apiError(error);

@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
     const onboardings = await listOnboardings(orgId, {
       estado: searchParams.get('estado') || undefined,
       vacanteId: searchParams.get('vacante_id') || undefined,
+      aplicacionId: searchParams.get('aplicacion_id') || undefined,
     });
 
     return apiResponse(onboardings);

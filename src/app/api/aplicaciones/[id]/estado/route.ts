@@ -9,8 +9,7 @@ import { sendEmail } from '@/lib/services/email.service';
 import { emailRechazoTemplate, sustituirVariables } from '@/lib/utils/email-templates';
 import { enviarParaFirma } from '@/lib/services/firma-electronica.service';
 import { createContrato, autoPoblarDatos } from '@/lib/services/contratos.service';
-import { enviarEmail } from '@/lib/services/email.service';
-import { emailContratadoTemplate } from '@/lib/utils/email-templates';
+import { registrarOnboardingContratado } from '@/lib/services/onboarding.service';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
 
 export const maxDuration = 10;
@@ -208,6 +207,7 @@ export async function PATCH(
     let warningDobleContratacion: { tipo: string; vacantes: string } | null = null;
     let contratoEnviado = false;
     let contratoWarning: string | null = null;
+    let onboardingResult: { onboardingId: string; emailEnviado: boolean } | null = null;
 
     if (nuevoEstado === 'contratado') {
       const candidatoNombre = `${app.candidato_nombre} ${app.candidato_apellido || ''}`.trim();
@@ -236,44 +236,40 @@ export async function PATCH(
         }
       } catch { /* non-blocking */ }
 
-      // PASO 1: Enviar email de contratado al candidato — SIEMPRE, sin depender del contrato
+      // PASO 1: Registrar el onboarding y gobernar el email de bienvenida.
+      // El envio se controla desde el modal de contratacion (onboarding.envio):
+      //   'ahora' | 'programado' | 'manual'. El email sale de la plantilla
+      //   configurable (Config > Onboarding), no de un template hardcodeado.
       try {
-        if (app.candidato_email) {
-          // Obtener salario y fecha de la aplicacion
-          const datosExtra = await pool.query(
-            `SELECT salario_ofrecido, moneda, fecha_inicio_tentativa FROM aplicaciones WHERE id = $1`,
-            [id]
-          );
-          const extra = datosExtra.rows[0] || {};
-          const salarioFormateado = extra.salario_ofrecido
-            ? `${extra.moneda || 'COP'} ${Number(extra.salario_ofrecido).toLocaleString('es-CO')}`
-            : undefined;
-          const fechaInicio = extra.fecha_inicio_tentativa
-            ? new Date(extra.fecha_inicio_tentativa).toLocaleDateString('es-CO', {
-                day: 'numeric', month: 'long', year: 'numeric',
-              })
-            : undefined;
+        const onbBody = (body.onboarding || {}) as {
+          fecha_inicio?: string;
+          lider_id?: string | null;
+          notas?: string | null;
+          envio?: 'ahora' | 'programado' | 'manual';
+        };
+        // Fecha de inicio: la del modal, o la tentativa ya guardada, o hoy
+        const fechaExtra = await pool.query(
+          `SELECT fecha_inicio_tentativa FROM aplicaciones WHERE id = $1`,
+          [id]
+        );
+        const fechaInicioOnb =
+          onbBody.fecha_inicio ||
+          (fechaExtra.rows[0]?.fecha_inicio_tentativa
+            ? new Date(fechaExtra.rows[0].fecha_inicio_tentativa).toISOString().slice(0, 10)
+            : new Date().toISOString().slice(0, 10));
 
-          const emailData = emailContratadoTemplate({
-            candidatoNombre,
-            vacanteTitulo: app.vacante_titulo,
-            empresaNombre: app.org_nombre,
-            salario: salarioFormateado,
-            fechaInicio,
-          });
-
-          await enviarEmail({
-            to: app.candidato_email,
-            subject: emailData.subject,
-            html: emailData.htmlBody,
-          });
-          console.log('[CONTRATADO] Email enviado a:', app.candidato_email);
-        } else {
-          console.warn('[CONTRATADO] Candidato sin email, no se envio notificacion');
-        }
-      } catch (emailError) {
-        console.error('[CONTRATADO] Error enviando email al candidato:', emailError);
-        // No bloquear el flujo
+        onboardingResult = await registrarOnboardingContratado({
+          aplicacionId: id,
+          orgId,
+          fechaInicio: fechaInicioOnb,
+          liderId: onbBody.lider_id ?? null,
+          notasOnboarding: onbBody.notas ?? null,
+          envio: onbBody.envio ?? 'manual',
+        });
+        console.log('[CONTRATADO] Onboarding registrado:', onboardingResult.onboardingId, 'envio:', onbBody.envio ?? 'manual');
+      } catch (onbError) {
+        console.error('[CONTRATADO] Error registrando onboarding:', onbError);
+        // No bloquear el flujo de contratacion
       }
 
       // PASO 2: Crear contrato automatico (no bloquea si falla)
@@ -458,6 +454,8 @@ export async function PATCH(
       responseData.contratoCreado = !contratoWarning;
       responseData.contratoEnviado = contratoEnviado;
       responseData.contratoWarning = contratoWarning;
+      responseData.onboardingId = onboardingResult?.onboardingId ?? null;
+      responseData.onboardingEmailEnviado = onboardingResult?.emailEnviado ?? false;
     }
 
     return apiResponse(responseData);

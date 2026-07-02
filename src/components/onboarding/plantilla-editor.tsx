@@ -1,15 +1,13 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor, RichTextEditorHandle } from '@/components/ui/rich-text-editor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Eye, RotateCcw, Save, Copy, Loader2 } from 'lucide-react';
-import type { OnboardingConfig } from '@/lib/types/onboarding.types';
+import { Eye, RotateCcw, Save, Plus, Loader2 } from 'lucide-react';
 import {
   VARIABLES_DISPONIBLES,
   PLANTILLA_BIENVENIDA_DEFAULT,
@@ -24,6 +22,7 @@ export function PlantillaEditor() {
   const [emailRemitente, setEmailRemitente] = useState('');
   const [nombreRemitente, setNombreRemitente] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+  const editorRef = useRef<RichTextEditorHandle | null>(null);
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -72,7 +71,7 @@ export function PlantillaEditor() {
 
   const insertVariable = (key: string) => {
     const tag = `{{${key}}}`;
-    setPlantilla(prev => prev + tag);
+    editorRef.current?.insertAtCursor(tag);
     toast.info(`Variable ${tag} insertada`);
   };
 
@@ -130,13 +129,12 @@ export function PlantillaEditor() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Template editor */}
         <div className="lg:col-span-2">
-          <Label htmlFor="plantilla">Plantilla HTML del email</Label>
-          <Textarea
-            id="plantilla"
+          <Label htmlFor="plantilla">Contenido del email</Label>
+          <RichTextEditor
+            ref={editorRef}
             value={plantilla}
-            onChange={e => setPlantilla(e.target.value)}
-            rows={20}
-            className="font-mono text-xs"
+            onChange={setPlantilla}
+            minHeight={420}
           />
         </div>
 
@@ -156,9 +154,10 @@ export function PlantillaEditor() {
                   size="sm"
                   variant="ghost"
                   className="h-6 px-1.5 shrink-0"
+                  title="Insertar en el editor"
                   onClick={() => insertVariable(v.key)}
                 >
-                  <Copy className="h-3 w-3" />
+                  <Plus className="h-3 w-3" />
                 </Button>
               </div>
             ))}

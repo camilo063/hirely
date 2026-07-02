@@ -17,6 +17,20 @@ interface EnviarEmailParams {
   replyTo?: string;
   cc?: string[];
   tags?: Record<string, string>;
+  /** Email del remitente. Debe pertenecer a un dominio verificado en Resend. */
+  from?: string;
+  /** Nombre visible del remitente (ej. "Recursos Humanos"). */
+  fromName?: string;
+}
+
+/**
+ * Construye el header `from` de Resend a partir de un email y un nombre opcional.
+ * Formato: "Nombre <email@dominio>" o "email@dominio".
+ */
+function buildFrom(email?: string, name?: string): string {
+  const addr = email && email.trim() ? email.trim() : EMAIL_FROM;
+  const nombre = name && name.trim() ? name.trim() : undefined;
+  return nombre ? `${nombre} <${addr}>` : addr;
 }
 
 interface EmailResult {
@@ -41,11 +55,12 @@ export async function enviarEmail(params: EnviarEmailParams): Promise<EmailResul
 
   try {
     const { data, error } = await resendClient.emails.send({
-      from: EMAIL_FROM,
+      from: buildFrom(params.from, params.fromName),
       to: Array.isArray(params.to) ? params.to : [params.to],
       subject: params.subject,
       html: params.html,
-      replyTo: params.replyTo,
+      // Si hay remitente configurado, dirige las respuestas ahi
+      replyTo: params.replyTo ?? params.from,
       cc: params.cc,
       tags: params.tags
         ? Object.entries(params.tags).map(([name, value]) => ({ name, value }))
@@ -75,6 +90,7 @@ interface LegacyEmailParams {
   htmlBody: string;
   textBody?: string;
   from?: string;
+  fromName?: string;
   replyTo?: string;
 }
 
@@ -84,6 +100,8 @@ export async function sendEmail(params: LegacyEmailParams): Promise<boolean> {
     subject: params.subject,
     html: params.htmlBody,
     replyTo: params.replyTo,
+    from: params.from,
+    fromName: params.fromName,
   });
   return result.success;
 }

@@ -140,6 +140,95 @@ export async function iniciarOnboarding(params: {
   }
 }
 
+/**
+ * Crea (o actualiza, idempotente) el registro de onboarding cuando un candidato
+ * pasa a "contratado". Se invoca desde el PATCH de estado de la aplicacion, de modo
+ * que CUALQUIER via que lleve a contratado (boton Contratar o selector de estado)
+ * genera el registro y gobierna el envio del email de bienvenida.
+ *
+ * envio:
+ *   - 'ahora'      -> crea el registro y envia el email de inmediato
+ *   - 'programado' -> crea el registro; el cron lo envia en la fecha de inicio
+ *   - 'manual'     -> crea el registro sin enviar; el admin lo envia desde la lista
+ */
+export async function registrarOnboardingContratado(params: {
+  aplicacionId: string;
+  orgId: string;
+  fechaInicio: string;
+  liderId?: string | null;
+  notasOnboarding?: string | null;
+  envio: 'ahora' | 'programado' | 'manual';
+}): Promise<{ onboardingId: string; emailEnviado: boolean }> {
+  const appResult = await pool.query(
+    `SELECT a.id, a.candidato_id, a.vacante_id, a.tipo_contrato,
+            a.salario_ofrecido, a.moneda,
+            v.titulo as vacante_titulo, v.departamento, v.modalidad, v.ubicacion
+     FROM aplicaciones a
+     JOIN vacantes v ON v.id = a.vacante_id
+     WHERE a.id = $1 AND v.organization_id = $2`,
+    [params.aplicacionId, params.orgId]
+  );
+  if (appResult.rows.length === 0) throw new Error('Aplicación no encontrada');
+  const app = appResult.rows[0];
+
+  // Guardar la fecha de inicio en la aplicacion
+  await pool.query(
+    `UPDATE aplicaciones SET fecha_inicio_tentativa = $2, updated_at = NOW() WHERE id = $1`,
+    [params.aplicacionId, params.fechaInicio]
+  );
+
+  // Datos del lider (opcional) -> se guardan como variables_custom para el email
+  let liderNombre: string | undefined;
+  let liderEmail: string | undefined;
+  if (params.liderId) {
+    const liderResult = await pool.query(
+      `SELECT name, email FROM users WHERE id = $1 AND organization_id = $2`,
+      [params.liderId, params.orgId]
+    );
+    if (liderResult.rows.length > 0) {
+      liderNombre = liderResult.rows[0].name;
+      liderEmail = liderResult.rows[0].email;
+    }
+  }
+  const variablesCustom: Record<string, string> = {};
+  if (liderNombre) variablesCustom.nombre_lider = liderNombre;
+  if (liderEmail) variablesCustom.email_lider = liderEmail;
+
+  const emailEstado = params.envio === 'programado' ? 'programado' : 'pendiente';
+
+  // Upsert: 1:1 con la aplicacion (UNIQUE en aplicacion_id)
+  const onbResult = await pool.query(
+    `INSERT INTO onboarding (aplicacion_id, candidato_id, organization_id, fecha_inicio,
+       email_bienvenida_estado, email_bienvenida_programado_at, variables_custom, notas_onboarding)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (aplicacion_id) DO UPDATE SET
+       fecha_inicio = EXCLUDED.fecha_inicio,
+       variables_custom = EXCLUDED.variables_custom,
+       notas_onboarding = COALESCE(EXCLUDED.notas_onboarding, onboarding.notas_onboarding),
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      params.aplicacionId, app.candidato_id, params.orgId, params.fechaInicio,
+      emailEstado,
+      params.envio === 'programado' ? new Date().toISOString() : null,
+      JSON.stringify(variablesCustom),
+      params.notasOnboarding || null,
+    ]
+  );
+  const onboarding = onbResult.rows[0];
+
+  let emailEnviado = false;
+  if (params.envio === 'ahora') {
+    try {
+      emailEnviado = await enviarEmailBienvenida(onboarding.id, params.orgId);
+    } catch (err) {
+      console.error('[Onboarding] Error enviando email de bienvenida:', err);
+    }
+  }
+
+  return { onboardingId: onboarding.id, emailEnviado };
+}
+
 // ─── VARIABLES ────────────────────────────────
 
 export function buildVariablesBienvenida(data: {
@@ -256,32 +345,14 @@ export async function enviarEmailBienvenida(
   }, customVars);
 
   const plantilla = config.plantilla_bienvenida || PLANTILLA_BIENVENIDA_DEFAULT;
-  let htmlBody = renderPlantilla(plantilla, variables);
-
-  // Append onboarding documents
-  if (config.documentos_onboarding.length > 0) {
-    const docsHtml = config.documentos_onboarding.map(d =>
-      `<li style="margin: 8px 0;">
-        <a href="${d.url}" style="color: #00BCD4; text-decoration: none; font-weight: 500;">${d.nombre}</a>
-        ${d.descripcion ? `<br><span style="color: #6b7280; font-size: 13px;">${d.descripcion}</span>` : ''}
-      </li>`
-    ).join('');
-
-    const docsSection = `
-    <div style="background: #F0F9FF; padding: 20px; border-radius: 8px; margin: 20px auto; max-width: 560px;">
-      <h3 style="color: #0A1F3F; margin-top: 0; font-size: 16px;">Documentos de onboarding</h3>
-      <ul style="list-style: none; padding: 0; margin: 0;">${docsHtml}</ul>
-    </div>`;
-
-    const closingIdx = htmlBody.lastIndexOf('</div>');
-    if (closingIdx > 0) {
-      htmlBody = htmlBody.slice(0, closingIdx) + docsSection + htmlBody.slice(closingIdx);
-    }
-  }
+  // Los documentos de onboarding se colocan manualmente en el cuerpo de la plantilla
+  // (via el link estable copiable de Configuracion > Onboarding), no se auto-anexan.
+  const htmlBody = renderPlantilla(plantilla, variables);
 
   const asunto = config.asunto_bienvenida || ASUNTO_BIENVENIDA_DEFAULT;
   const subject = renderPlantilla(asunto, variables);
   const fromEmail = config.email_remitente || undefined;
+  const fromName = config.nombre_remitente || undefined;
 
   try {
     await sendEmail({
@@ -289,6 +360,7 @@ export async function enviarEmailBienvenida(
       subject,
       htmlBody,
       from: fromEmail,
+      fromName,
     });
 
     await pool.query(
@@ -345,7 +417,7 @@ export async function procesarEmailsProgramados(): Promise<{ enviados: number; e
 
 export async function listOnboardings(
   orgId: string,
-  filters?: { estado?: string; vacanteId?: string }
+  filters?: { estado?: string; vacanteId?: string; aplicacionId?: string }
 ): Promise<OnboardingCandidato[]> {
   let query = `
     SELECT ob.*,
@@ -367,6 +439,10 @@ export async function listOnboardings(
   if (filters?.vacanteId) {
     query += ` AND v.id = $${idx++}`;
     params.push(filters.vacanteId);
+  }
+  if (filters?.aplicacionId) {
+    query += ` AND ob.aplicacion_id = $${idx++}`;
+    params.push(filters.aplicacionId);
   }
 
   query += ' ORDER BY ob.fecha_inicio DESC';

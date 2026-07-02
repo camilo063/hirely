@@ -32,6 +32,7 @@ import {
   type TransicionInfo,
 } from '@/lib/constants/pipeline-states';
 import { DialogTerminacionContrato } from './dialog-terminacion-contrato';
+import { ContratarModal } from '@/components/onboarding/contratar-modal';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -42,6 +43,8 @@ interface SelectorEstadoAplicacionProps {
   candidatoNombre: string;
   onEstadoCambiado?: () => void;
   size?: 'sm' | 'md';
+  vacanteTitulo?: string;
+  fechaInicioTentativa?: string;
 }
 
 const STATE_BADGE_COLORS: Record<string, string> = {
@@ -71,10 +74,13 @@ export function SelectorEstadoAplicacion({
   candidatoNombre,
   onEstadoCambiado,
   size = 'md',
+  vacanteTitulo = '',
+  fechaInicioTentativa,
 }: SelectorEstadoAplicacionProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [terminacionOpen, setTerminacionOpen] = useState(false);
+  const [contratarOpen, setContratarOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     estado: string;
@@ -151,13 +157,10 @@ export function SelectorEstadoAplicacion({
     }
 
     if (key === 'contratado') {
+      // Abre el modal de contratacion (fecha, lider, y decision de envio del
+      // email de onboarding). El modal hace el PATCH a 'contratado'.
       setOpen(false);
-      setConfirmDialog({
-        open: true,
-        estado: 'contratado',
-        title: 'Marcar como contratado',
-        description: `Al marcar a ${candidatoNombre} como contratado, se generara el contrato y se enviara para firma electronica. El email de onboarding se enviara automaticamente despues de que el contrato sea firmado. ¿Confirmar?`,
-      });
+      setContratarOpen(true);
       return;
     }
 
@@ -283,6 +286,16 @@ export function SelectorEstadoAplicacion({
         open={terminacionOpen}
         onOpenChange={setTerminacionOpen}
         onTerminado={() => onEstadoCambiado?.()}
+      />
+
+      <ContratarModal
+        aplicacionId={aplicacionId}
+        candidatoNombre={candidatoNombre}
+        vacanteTitulo={vacanteTitulo}
+        fechaInicioTentativa={fechaInicioTentativa}
+        open={contratarOpen}
+        onOpenChange={setContratarOpen}
+        onSuccess={() => onEstadoCambiado?.()}
       />
     </TooltipProvider>
   );

@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor, RichTextEditorHandle } from '@/components/ui/rich-text-editor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -53,6 +53,8 @@ export function PlantillaContratoEditor() {
   // Datos reales de la empresa (Configuración › Empresa) para que la vista
   // previa refleje la información verdadera y no datos de ejemplo.
   const [empresaData, setEmpresaData] = useState<Record<string, string>>({});
+  const newEditorRef = useRef<RichTextEditorHandle | null>(null);
+  const editEditorRef = useRef<RichTextEditorHandle | null>(null);
 
   const copyVar = (key: string) => {
     const token = `{{${key}}}`;
@@ -289,26 +291,32 @@ export function PlantillaContratoEditor() {
 
             <div>
               <Label className="flex items-center gap-2">
-                Contenido HTML
+                Contenido de la plantilla
                 <button type="button" onClick={() => setShowPreview(!showPreview)} className="text-xs text-teal hover:underline">
-                  {showPreview ? 'Editor' : 'Vista previa'}
+                  {showPreview ? 'Editor' : 'Vista previa con datos'}
                 </button>
               </Label>
               {showPreview ? (
                 <div className="border rounded-md p-4 bg-white min-h-[200px] max-h-[400px] overflow-y-auto text-sm"
                   dangerouslySetInnerHTML={{ __html: getPreviewHtml() }} />
               ) : (
-                <Textarea value={newHtml} onChange={e => setNewHtml(e.target.value)} rows={8} className="font-mono text-xs" />
+                <RichTextEditor
+                  ref={newEditorRef}
+                  value={newHtml}
+                  onChange={setNewHtml}
+                  isolated
+                  minHeight={280}
+                />
               )}
             </div>
 
-            {/* Variables reference */}
+            {/* Variables reference — click para insertar en el editor */}
             <div>
-              <Label className="text-xs">Variables disponibles para {getTipoLabel(newTipo)}:</Label>
+              <Label className="text-xs">Variables disponibles para {getTipoLabel(newTipo)} (click para insertar):</Label>
               <div className="flex flex-wrap gap-1 mt-1">
                 {(VARIABLES_CONTRATO[newTipo as TipoContrato] || VARIABLES_CONTRATO['laboral'] || []).map(v => (
                   <Badge key={v.key} variant="outline" className="text-[10px] cursor-pointer"
-                    onClick={() => setNewHtml(prev => prev + `{{${v.key}}}`)}
+                    onClick={() => newEditorRef.current?.insertAtCursor(`{{${v.key}}}`)}
                   >
                     {`{{${v.key}}}`}
                   </Badge>
@@ -353,14 +361,14 @@ export function PlantillaContratoEditor() {
                       <div className="flex items-center justify-between mb-1">
                         <Label className="text-xs flex items-center gap-2">
                           {editShowPreview ? <Eye className="h-3 w-3" /> : <Code className="h-3 w-3" />}
-                          {editShowPreview ? 'Vista previa' : 'HTML'}
+                          {editShowPreview ? 'Vista previa con datos' : 'Editor'}
                         </Label>
                         <button
                           type="button"
                           onClick={() => setEditShowPreview(!editShowPreview)}
                           className="text-xs text-teal hover:underline"
                         >
-                          {editShowPreview ? 'Editar HTML' : 'Vista previa'}
+                          {editShowPreview ? 'Volver al editor' : 'Vista previa con datos'}
                         </button>
                       </div>
                       {editShowPreview ? (
@@ -369,12 +377,24 @@ export function PlantillaContratoEditor() {
                           dangerouslySetInnerHTML={{ __html: getPreviewHtmlFor(selected.contenido_html, p.tipo) }}
                         />
                       ) : (
-                        <Textarea
-                          value={selected.contenido_html}
-                          onChange={e => setSelected({ ...selected, contenido_html: e.target.value })}
-                          rows={10}
-                          className="font-mono text-xs"
-                        />
+                        <>
+                          <RichTextEditor
+                            ref={editEditorRef}
+                            value={selected.contenido_html}
+                            onChange={(html) => setSelected({ ...selected, contenido_html: html })}
+                            isolated
+                            minHeight={360}
+                          />
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {(VARIABLES_CONTRATO[p.tipo as TipoContrato] || VARIABLES_CONTRATO['laboral'] || []).map(v => (
+                              <Badge key={v.key} variant="outline" className="text-[10px] cursor-pointer"
+                                onClick={() => editEditorRef.current?.insertAtCursor(`{{${v.key}}}`)}
+                              >
+                                {`{{${v.key}}}`}
+                              </Badge>
+                            ))}
+                          </div>
+                        </>
                       )}
                     </div>
                     <div className="flex justify-end gap-2">

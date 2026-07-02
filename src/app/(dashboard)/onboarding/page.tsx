@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { toast } from 'sonner';
 import {
   Users, Mail, Calendar, Clock, CheckCircle, AlertCircle,
@@ -18,6 +19,13 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(true);
   const [filtroEstado, setFiltroEstado] = useState('todos');
   const [procesando, setProcesando] = useState(false);
+  const [confirmEmail, setConfirmEmail] = useState<{
+    open: boolean;
+    id: string;
+    nombre: string;
+    esReenvio: boolean;
+    fechaEnviado?: string;
+  }>({ open: false, id: '', nombre: '', esReenvio: false });
 
   const fetchOnboardings = useCallback(async () => {
     try {
@@ -70,6 +78,13 @@ export default function OnboardingPage() {
   const formatFecha = (iso: string) => {
     const d = new Date(iso + 'T12:00:00');
     return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const formatFechaHora = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleString('es-CO', {
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
   };
 
   const daysUntil = (iso: string) => {
@@ -233,7 +248,12 @@ export default function OnboardingPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleEnviarEmail(ob.id)}
+                        onClick={() => setConfirmEmail({
+                          open: true,
+                          id: ob.id,
+                          nombre: `${ob.candidato_nombre} ${ob.candidato_apellido || ''}`.trim(),
+                          esReenvio: false,
+                        })}
                         className="gap-1 text-xs"
                       >
                         <Send className="h-3 w-3" /> Enviar
@@ -243,7 +263,13 @@ export default function OnboardingPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleEnviarEmail(ob.id)}
+                        onClick={() => setConfirmEmail({
+                          open: true,
+                          id: ob.id,
+                          nombre: `${ob.candidato_nombre} ${ob.candidato_apellido || ''}`.trim(),
+                          esReenvio: true,
+                          fechaEnviado: ob.email_bienvenida_enviado_at || undefined,
+                        })}
                         className="gap-1 text-xs text-muted-foreground"
                       >
                         <RefreshCw className="h-3 w-3" /> Re-enviar
@@ -256,6 +282,22 @@ export default function OnboardingPage() {
           </Table>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={confirmEmail.open}
+        onOpenChange={(open) => setConfirmEmail(prev => ({ ...prev, open }))}
+        destructive={confirmEmail.esReenvio}
+        title={confirmEmail.esReenvio ? 'Reenviar email de onboarding' : 'Enviar email de onboarding'}
+        description={
+          confirmEmail.esReenvio
+            ? `${confirmEmail.nombre} ya recibió el email de onboarding${
+                confirmEmail.fechaEnviado ? ` el ${formatFechaHora(confirmEmail.fechaEnviado)}` : ''
+              }. ¿Enviar de nuevo?`
+            : `Se enviará el correo de bienvenida de onboarding a ${confirmEmail.nombre}.`
+        }
+        confirmLabel={confirmEmail.esReenvio ? 'Reenviar' : 'Enviar'}
+        onConfirm={() => handleEnviarEmail(confirmEmail.id)}
+      />
     </div>
   );
 }

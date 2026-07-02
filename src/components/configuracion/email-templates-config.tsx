@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Save, Loader2, Mail, ChevronDown, Eye, EyeOff, RotateCcw, Copy, Info } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Save, Loader2, Mail, ChevronDown, Eye, EyeOff, RotateCcw, Plus, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor, RichTextEditorHandle } from '@/components/ui/rich-text-editor';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import {
@@ -58,6 +58,7 @@ export function EmailTemplatesConfig() {
   const [saving, setSaving] = useState<string | null>(null);
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [previewSection, setPreviewSection] = useState<string | null>(null);
+  const editorRefs = useRef<Record<string, RichTextEditorHandle | null>>({});
 
   useEffect(() => {
     fetchConfig();
@@ -212,10 +213,10 @@ export function EmailTemplatesConfig() {
                       {section.description}
                     </p>
 
-                    {/* Variables panel with copy-on-click */}
+                    {/* Variables panel — click para insertar en el editor */}
                     <div>
                       <Label className="text-xs text-muted-foreground">
-                        Variables disponibles (click para copiar)
+                        Variables disponibles (click para insertar)
                       </Label>
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
                         {section.variables.map((v) => (
@@ -225,31 +226,27 @@ export function EmailTemplatesConfig() {
                             className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2.5 py-1 rounded-md font-mono cursor-pointer hover:bg-blue-100 transition-colors border border-blue-200"
                             title={`${v.label} — Ej: ${v.ejemplo}`}
                             onClick={() => {
-                              navigator.clipboard.writeText(`{{${v.key}}}`);
-                              toast.success(`Copiado: {{${v.key}}}`);
+                              editorRefs.current[section.key]?.insertAtCursor(`{{${v.key}}}`);
+                              toast.success(`Insertado: {{${v.key}}}`);
                             }}
                           >
-                            <Copy className="h-3 w-3" />
+                            <Plus className="h-3 w-3" />
                             {`{{${v.key}}}`}
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    {/* HTML content editor */}
+                    {/* Editor de contenido (visual + HTML) */}
                     <div className="space-y-2">
-                      <Label>Contenido HTML del email</Label>
-                      <Textarea
-                        rows={12}
-                        className="font-mono text-xs"
-                        placeholder={`Escribe tu plantilla HTML aqui o usa la plantilla por defecto...`}
-                        value={config[section.key]}
-                        onChange={(e) =>
-                          setConfig((prev) => ({
-                            ...prev,
-                            [section.key]: e.target.value,
-                          }))
+                      <Label>Contenido del email</Label>
+                      <RichTextEditor
+                        ref={(el) => { editorRefs.current[section.key] = el; }}
+                        value={config[section.key] || section.defaultTemplate}
+                        onChange={(html) =>
+                          setConfig((prev) => ({ ...prev, [section.key]: html }))
                         }
+                        minHeight={280}
                       />
                     </div>
 

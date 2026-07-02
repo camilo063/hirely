@@ -485,6 +485,8 @@ export function PipelineCompleto({
                           candidatoNombre={`${app.candidato.nombre} ${app.candidato.apellido}`}
                           onEstadoCambiado={fetchData}
                           size="sm"
+                          vacanteTitulo={vacanteTitulo}
+                          fechaInicioTentativa={(app as { fecha_inicio_tentativa?: string }).fecha_inicio_tentativa}
                         />
                       </TableCell>
                       <TableCell>
