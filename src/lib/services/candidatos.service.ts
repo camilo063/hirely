@@ -184,9 +184,21 @@ export async function getAplicacionesByVacante(orgId: UUID, vacanteId: UUID): Pr
         'telefono', c.telefono, 'linkedin_url', c.linkedin_url, 'habilidades', c.habilidades,
         'experiencia_anos', c.experiencia_anos, 'cv_url', c.cv_url, 'fuente', c.fuente,
         'cv_parsed', c.cv_parsed, 'ubicacion', c.ubicacion, 'nivel_educativo', c.nivel_educativo
-      ) as candidato
+      ) as candidato,
+      CASE WHEN et.id IS NOT NULL THEN json_build_object(
+        'id', et.id, 'estado', et.estado, 'titulo', et.titulo,
+        'score_total', et.score_total, 'aprobada', et.aprobada,
+        'enviada_at', et.enviada_at, 'completada_at', et.completada_at
+      ) ELSE NULL END as evaluacion_tecnica
     FROM aplicaciones a
     JOIN candidatos c ON a.candidato_id = c.id
+    LEFT JOIN LATERAL (
+      SELECT e.id, e.estado, e.titulo, e.score_total, e.aprobada, e.enviada_at, e.completada_at
+      FROM evaluaciones e
+      WHERE e.aplicacion_id = a.id
+      ORDER BY e.created_at DESC
+      LIMIT 1
+    ) et ON true
     WHERE a.vacante_id = $1 AND c.organization_id = $2
     ORDER BY a.score_ats DESC NULLS LAST, c.nombre ASC`,
     [vacanteId, orgId]

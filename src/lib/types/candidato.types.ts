@@ -62,8 +62,19 @@ export interface Aplicacion {
   updated_at: Date;
 }
 
+export interface EvaluacionTecnicaResumen {
+  id: string;
+  estado: string; // pendiente | enviada | en_progreso | completada | expirada | cancelada
+  titulo: string;
+  score_total: number | null;
+  aprobada: boolean | null;
+  enviada_at: Date | null;
+  completada_at: Date | null;
+}
+
 export interface AplicacionConCandidato extends Aplicacion {
   candidato: Candidato;
+  evaluacion_tecnica: EvaluacionTecnicaResumen | null;
 }
 
 export interface AplicacionConVacante extends Aplicacion {

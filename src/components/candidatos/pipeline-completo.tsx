@@ -49,6 +49,62 @@ import {
   AlertTriangle, ChevronDown,
 } from 'lucide-react';
 import { SelectorEstadoAplicacion } from '@/components/candidatos/selector-estado-aplicacion';
+import type { EvaluacionTecnicaResumen } from '@/lib/types/candidato.types';
+
+function PruebaTecnicaBadge({ evaluacion }: { evaluacion: EvaluacionTecnicaResumen | null }) {
+  if (!evaluacion) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  const score = evaluacion.score_total !== null ? Number(evaluacion.score_total).toFixed(0) : null;
+  const base = 'text-xs gap-1 whitespace-nowrap';
+  switch (evaluacion.estado) {
+    case 'pendiente':
+      return (
+        <Badge variant="outline" className={`${base} text-slate-600 border-slate-300`}>
+          <FileText className="h-3 w-3" /> Pendiente
+        </Badge>
+      );
+    case 'enviada':
+      return (
+        <Badge variant="outline" className={`${base} text-blue-600 border-blue-300 bg-blue-50`}>
+          <Mail className="h-3 w-3" /> Enviada
+        </Badge>
+      );
+    case 'en_progreso':
+      return (
+        <Badge variant="outline" className={`${base} text-amber-700 border-amber-300 bg-amber-50`}>
+          <Loader2 className="h-3 w-3" /> En progreso
+        </Badge>
+      );
+    case 'completada':
+      return (
+        <Badge
+          variant="outline"
+          className={`${base} ${evaluacion.aprobada === false ? 'text-red-600 border-red-300 bg-red-50' : 'text-success border-success/30 bg-success/5'}`}
+        >
+          <CheckCircle className="h-3 w-3" /> Completada{score !== null ? ` · ${score}` : ''}
+        </Badge>
+      );
+    case 'expirada':
+      return (
+        <Badge variant="outline" className={`${base} text-red-600 border-red-300 bg-red-50`}>
+          <XCircle className="h-3 w-3" /> Expirada
+        </Badge>
+      );
+    case 'cancelada':
+      return (
+        <Badge variant="outline" className={`${base} text-muted-foreground border-slate-200`}>
+          <XCircle className="h-3 w-3" /> Cancelada
+        </Badge>
+      );
+    default:
+      return (
+        <Badge variant="outline" className={`${base} text-slate-600 border-slate-300`}>
+          {evaluacion.estado}
+        </Badge>
+      );
+  }
+}
 
 interface PipelineCompletoProps {
   vacanteId: string;
@@ -349,6 +405,7 @@ export function PipelineCompleto({
                   <TableHead className="text-center">Score ATS</TableHead>
                   <TableHead className="text-center">Corte</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead>Prueba Técnica</TableHead>
                   <TableHead>Habilidades</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -356,7 +413,7 @@ export function PipelineCompleto({
               <TableBody>
                 {filteredAplicaciones.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       {filterPasaCorte ? 'Ningun candidato pasa el corte' : 'Sin candidatos en esta vacante'}
                     </TableCell>
                   </TableRow>
@@ -429,6 +486,9 @@ export function PipelineCompleto({
                           onEstadoCambiado={fetchData}
                           size="sm"
                         />
+                      </TableCell>
+                      <TableCell>
+                        <PruebaTecnicaBadge evaluacion={app.evaluacion_tecnica} />
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1 max-w-[200px]">
