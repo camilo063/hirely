@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,9 +28,25 @@ export function VacanteForm({ initialData, isEditing = false }: VacanteFormProps
   const [criterios, setCriterios] = useState<any>(
     (initialData?.criterios_evaluacion as any) || { ...DEFAULT_CRITERIOS }
   );
-  const [scoreMinimo, setScoreMinimo] = useState<number>(
-    (initialData?.score_minimo as number) || 70
+  // score_minimo null/undefined => la vacante hereda el umbral de la organizacion
+  const initialScoreMinimo = initialData?.score_minimo;
+  const [usarUmbralOrg, setUsarUmbralOrg] = useState<boolean>(
+    initialScoreMinimo === null || initialScoreMinimo === undefined
   );
+  const [scoreMinimo, setScoreMinimo] = useState<number>(
+    typeof initialScoreMinimo === 'number' ? initialScoreMinimo : 70
+  );
+  const [umbralOrg, setUmbralOrg] = useState<number>(70);
+
+  useEffect(() => {
+    fetch('/api/configuracion/scoring')
+      .then((res) => res.json())
+      .then((data) => {
+        const d = data.data || data;
+        if (typeof d.umbral_preseleccion === 'number') setUmbralOrg(d.umbral_preseleccion);
+      })
+      .catch(() => {});
+  }, []);
   const [habilidades, setHabilidades] = useState<string[]>(
     (initialData?.habilidades_requeridas as string[]) || []
   );
@@ -54,7 +70,7 @@ export function VacanteForm({ initialData, isEditing = false }: VacanteFormProps
       experiencia_minima: Number(formData.get('experiencia_minima') || 0),
       criterios_evaluacion: criterios,
       habilidades_requeridas: habilidades,
-      score_minimo: scoreMinimo,
+      score_minimo: usarUmbralOrg ? null : scoreMinimo,
     };
 
     try {
@@ -207,6 +223,9 @@ export function VacanteForm({ initialData, isEditing = false }: VacanteFormProps
         onChange={setCriterios}
         scoreMinimo={scoreMinimo}
         onScoreMinimoChange={setScoreMinimo}
+        usarUmbralOrg={usarUmbralOrg}
+        onUsarUmbralOrgChange={setUsarUmbralOrg}
+        umbralOrg={umbralOrg}
       />
 
       <div className="flex justify-end gap-3">

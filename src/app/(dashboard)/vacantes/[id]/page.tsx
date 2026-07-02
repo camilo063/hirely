@@ -238,7 +238,7 @@ export default function VacanteDetailPage() {
           <PipelineCompleto
             vacanteId={params.id as string}
             vacanteTitulo={vacante.titulo}
-            scoreMinimo={vacante.score_minimo || 70}
+            scoreMinimo={vacante.umbral_efectivo ?? vacante.score_minimo ?? 70}
             linkedinJobId={vacante.linkedin_job_id ?? null}
           />
         </TabsContent>

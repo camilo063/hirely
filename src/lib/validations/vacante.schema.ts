@@ -33,7 +33,7 @@ export const vacanteCreateSchema = z.object({
   criterios_evaluacion: criteriosEvaluacionSchema,
   habilidades_requeridas: z.array(z.string()).min(1, 'Al menos una habilidad requerida'),
   experiencia_minima: z.number().min(0).default(0),
-  score_minimo: z.number().min(0).max(100).optional(),
+  score_minimo: z.number().min(0).max(100).nullable().optional(),
 }).refine(
   (data) => {
     if (data.rango_salarial_min && data.rango_salarial_max) {
@@ -58,7 +58,7 @@ export const vacanteUpdateSchema = z.object({
   criterios_evaluacion: criteriosEvaluacionSchema.optional(),
   habilidades_requeridas: z.array(z.string()).optional(),
   experiencia_minima: z.number().min(0).optional(),
-  score_minimo: z.number().min(0).max(100).optional(),
+  score_minimo: z.number().min(0).max(100).nullable().optional(),
 });
 
 export type VacanteCreateInput = z.infer<typeof vacanteCreateSchema>;

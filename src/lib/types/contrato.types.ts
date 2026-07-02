@@ -68,7 +68,10 @@ export interface DatosContrato {
   empresa_nombre?: string;
   empresa_nit?: string;
   empresa_representante?: string;
+  empresa_cargo_representante?: string;
   empresa_direccion?: string;
+  empresa_telefono?: string;
+  empresa_email?: string;
   cargo: string;
 
   // Manual
@@ -157,6 +160,9 @@ export const VARIABLES_CONTRATO: Record<TipoContrato, VariableContrato[]> = {
     { key: 'empresa_nombre', label: 'Nombre de la empresa', tipo: 'auto', fuente: 'organization.name', required: true },
     { key: 'empresa_nit', label: 'NIT de la empresa', tipo: 'manual', required: true },
     { key: 'empresa_representante', label: 'Representante legal', tipo: 'manual', required: true },
+    { key: 'empresa_cargo_representante', label: 'Cargo del representante legal', tipo: 'manual', required: false },
+    { key: 'empresa_telefono', label: 'Teléfono de la empresa', tipo: 'manual', required: false },
+    { key: 'empresa_email', label: 'Correo de la empresa', tipo: 'manual', required: false },
     { key: 'cargo', label: 'Cargo / Objeto del servicio', tipo: 'auto', fuente: 'vacante.titulo', required: true },
     { key: 'objeto_contrato', label: 'Objeto del contrato', tipo: 'manual', required: true },
     { key: 'obligaciones', label: 'Obligaciones del contratista', tipo: 'manual', required: false },
@@ -178,6 +184,9 @@ export const VARIABLES_CONTRATO: Record<TipoContrato, VariableContrato[]> = {
     { key: 'empresa_nombre', label: 'Nombre de la empresa', tipo: 'auto', fuente: 'organization.name', required: true },
     { key: 'empresa_nit', label: 'NIT de la empresa', tipo: 'manual', required: true },
     { key: 'empresa_representante', label: 'Representante legal', tipo: 'manual', required: true },
+    { key: 'empresa_cargo_representante', label: 'Cargo del representante legal', tipo: 'manual', required: false },
+    { key: 'empresa_telefono', label: 'Teléfono de la empresa', tipo: 'manual', required: false },
+    { key: 'empresa_email', label: 'Correo de la empresa', tipo: 'manual', required: false },
     { key: 'cargo', label: 'Cargo / Rol', tipo: 'auto', fuente: 'vacante.titulo', required: true },
     { key: 'objeto_contrato', label: 'Descripción del servicio', tipo: 'manual', required: true },
     { key: 'fecha_inicio', label: 'Fecha de inicio', tipo: 'auto', fuente: 'aplicacion.fecha_inicio_tentativa', required: true },
@@ -198,6 +207,9 @@ export const VARIABLES_CONTRATO: Record<TipoContrato, VariableContrato[]> = {
     { key: 'empresa_nombre', label: 'Razón social', tipo: 'auto', fuente: 'organization.name', required: true },
     { key: 'empresa_nit', label: 'NIT', tipo: 'manual', required: true },
     { key: 'empresa_representante', label: 'Representante legal', tipo: 'manual', required: true },
+    { key: 'empresa_cargo_representante', label: 'Cargo del representante legal', tipo: 'manual', required: false },
+    { key: 'empresa_telefono', label: 'Teléfono de la empresa', tipo: 'manual', required: false },
+    { key: 'empresa_email', label: 'Correo de la empresa', tipo: 'manual', required: false },
     { key: 'empresa_direccion', label: 'Dirección de la empresa', tipo: 'manual', required: false },
     { key: 'cargo', label: 'Cargo', tipo: 'auto', fuente: 'vacante.titulo', required: true },
     { key: 'fecha_inicio', label: 'Fecha de inicio', tipo: 'auto', fuente: 'aplicacion.fecha_inicio_tentativa', required: true },

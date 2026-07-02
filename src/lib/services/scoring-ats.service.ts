@@ -30,7 +30,8 @@ import { NotFoundError } from '../utils/errors';
  */
 export function calculateATSScore(
   cvData: CVParsedData,
-  vacante: Vacante
+  vacante: Vacante,
+  umbralOrg?: number | null
 ): ATSScoreResult {
   // Obtener criterios de evaluacion (custom o defaults)
   const rawCriterios = vacante.criterios_evaluacion;
@@ -88,7 +89,8 @@ export function calculateATSScore(
     breakdown.keywords.ponderado
   );
 
-  const score_minimo = vacante.score_minimo || 70;
+  // Umbral efectivo: override de la vacante > umbral de la organizacion > 70
+  const score_minimo = vacante.score_minimo ?? umbralOrg ?? 70;
   const pasa_corte = score_total >= score_minimo;
 
   let recomendacion: ATSScoreResult['recomendacion'];
@@ -431,11 +433,12 @@ export async function calculateAtsScore(
 ): Promise<LegacyAtsScoreResult> {
   const appResult = await pool.query(
     `SELECT a.*, v.criterios_evaluacion, v.habilidades_requeridas, v.experiencia_minima,
-      v.nivel_estudios, v.score_minimo,
+      v.nivel_estudios, v.score_minimo, os.umbral_preseleccion as umbral_org,
       c.habilidades as candidato_habilidades, c.experiencia_anos, c.cv_parsed
     FROM aplicaciones a
     JOIN vacantes v ON a.vacante_id = v.id
     JOIN candidatos c ON a.candidato_id = c.id
+    LEFT JOIN org_settings os ON os.organization_id = v.organization_id
     WHERE a.id = $1 AND v.organization_id = $2`,
     [aplicacionId, orgId]
   );
@@ -455,7 +458,7 @@ export async function calculateAtsScore(
       score_minimo: app.score_minimo,
     } as Vacante;
 
-    const result = calculateATSScore(cvParsed, vacante);
+    const result = calculateATSScore(cvParsed, vacante, app.umbral_org != null ? Number(app.umbral_org) : null);
 
     // Convert to legacy format
     return {

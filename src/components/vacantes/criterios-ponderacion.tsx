@@ -41,6 +41,9 @@ interface CriteriosPonderacionProps {
   onChange: (criterios: CriteriosExtended) => void;
   scoreMinimo?: number;
   onScoreMinimoChange?: (value: number) => void;
+  usarUmbralOrg?: boolean;
+  onUsarUmbralOrgChange?: (value: boolean) => void;
+  umbralOrg?: number;
 }
 
 export function CriteriosPonderacion({
@@ -48,6 +51,9 @@ export function CriteriosPonderacion({
   onChange,
   scoreMinimo = 70,
   onScoreMinimoChange,
+  usarUmbralOrg = false,
+  onUsarUmbralOrgChange,
+  umbralOrg = 70,
 }: CriteriosPonderacionProps) {
   // Normalize from old array format or flat object
   const normalized = normalizeCriterios(criterios);
@@ -133,24 +139,48 @@ export function CriteriosPonderacion({
           );
         })}
 
-        {/* Score minimo slider */}
+        {/* Filtro de corte: umbral de la org (default) o override por vacante */}
         {onScoreMinimoChange && (
-          <div className="pt-4 border-t space-y-1.5">
+          <div className="pt-4 border-t space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">Filtro de corte</Label>
-              <span className="text-sm font-bold text-navy">{scoreMinimo}</span>
+              {onUsarUmbralOrgChange && (
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={usarUmbralOrg}
+                    onChange={(e) => onUsarUmbralOrgChange(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-teal"
+                  />
+                  Usar umbral de la organizacion ({umbralOrg}%)
+                </label>
+              )}
             </div>
-            <Slider
-              value={[scoreMinimo]}
-              min={0}
-              max={100}
-              step={5}
-              onValueChange={([v]) => onScoreMinimoChange(v)}
-              className="w-full"
-            />
-            <p className="text-xs text-muted-foreground">
-              Solo candidatos con score &ge; {scoreMinimo} pasaran automaticamente a revision
-            </p>
+
+            {usarUmbralOrg ? (
+              <p className="text-xs text-muted-foreground">
+                Esta vacante usa el umbral configurado en Configuracion &gt; Scoring
+                (<span className="font-semibold text-navy">{umbralOrg}%</span>). Desmarca la casilla
+                para definir un corte especifico para esta vacante.
+              </p>
+            ) : (
+              <>
+                <div className="flex items-center justify-end">
+                  <span className="text-sm font-bold text-navy">{scoreMinimo}</span>
+                </div>
+                <Slider
+                  value={[scoreMinimo]}
+                  min={0}
+                  max={100}
+                  step={5}
+                  onValueChange={([v]) => onScoreMinimoChange(v)}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Solo candidatos con score &ge; {scoreMinimo} pasaran automaticamente a revision
+                </p>
+              </>
+            )}
           </div>
         )}
 

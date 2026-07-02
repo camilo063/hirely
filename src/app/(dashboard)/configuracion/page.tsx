@@ -153,7 +153,8 @@ function ConfiguracionPage() {
 
   const [pesoIA, setPesoIA] = useState(40);
   const [pesoHumano, setPesoHumano] = useState(60);
-  const [umbral, setUmbral] = useState(60);
+  const [umbral, setUmbral] = useState(70);
+  const [scoringSaving, setScoringSaving] = useState(false);
 
   // Organizacion tab state
   const [orgNombre, setOrgNombre] = useState('');
@@ -172,6 +173,16 @@ function ConfiguracionPage() {
         setOrgNombre(nombre);
         setOrgSlug(nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''));
         setOrgLogoPreview(d.logo_display_url || d.logo_url || '');
+      })
+      .catch(() => {});
+
+    fetch('/api/configuracion/scoring')
+      .then(res => res.json())
+      .then(data => {
+        const d = data.data || data;
+        if (typeof d.peso_ia === 'number') setPesoIA(d.peso_ia);
+        if (typeof d.peso_humano === 'number') setPesoHumano(d.peso_humano);
+        if (typeof d.umbral_preseleccion === 'number') setUmbral(d.umbral_preseleccion);
       })
       .catch(() => {});
   }, []);
@@ -212,12 +223,35 @@ function ConfiguracionPage() {
     }
   }, [searchParams]);
 
-  const handleSaveScoring = () => {
+  const handleSaveScoring = async () => {
     if (pesoIA + pesoHumano !== 100) {
       toast.error('Los pesos deben sumar 100%');
       return;
     }
-    toast.success('Configuracion de scoring guardada');
+    if (umbral < 0 || umbral > 100) {
+      toast.error('El umbral debe estar entre 0 y 100');
+      return;
+    }
+    setScoringSaving(true);
+    try {
+      const res = await fetch('/api/configuracion/scoring', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          peso_ia: pesoIA,
+          peso_humano: pesoHumano,
+          umbral_preseleccion: umbral,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Error al guardar la configuracion');
+      toast.success('Configuracion de scoring guardada');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error al guardar la configuracion';
+      toast.error(msg);
+    } finally {
+      setScoringSaving(false);
+    }
   };
 
   return (
@@ -394,8 +428,8 @@ function ConfiguracionPage() {
                 </p>
               </div>
 
-              <Button onClick={handleSaveScoring} className="bg-teal hover:bg-teal/90 text-white">
-                <Save className="h-4 w-4 mr-2" /> Guardar configuracion
+              <Button onClick={handleSaveScoring} disabled={scoringSaving} className="bg-teal hover:bg-teal/90 text-white">
+                <Save className="h-4 w-4 mr-2" /> {scoringSaving ? 'Guardando...' : 'Guardar configuracion'}
               </Button>
             </CardContent>
           </Card>

@@ -71,8 +71,10 @@ export async function getVacante(orgId: UUID, vacanteId: UUID): Promise<VacanteW
       COALESCE(stats.total, 0)::int as total_aplicaciones,
       COALESCE(stats.nuevos, 0)::int as nuevos,
       COALESCE(stats.en_proceso, 0)::int as en_proceso,
-      COALESCE(stats.seleccionados, 0)::int as seleccionados
+      COALESCE(stats.seleccionados, 0)::int as seleccionados,
+      COALESCE(v.score_minimo, os.umbral_preseleccion, 70)::int as umbral_efectivo
     FROM vacantes v
+    LEFT JOIN org_settings os ON os.organization_id = v.organization_id
     LEFT JOIN LATERAL (
       SELECT
         COUNT(*) as total,
@@ -106,7 +108,7 @@ export async function createVacante(
       input.rango_salarial_min ?? null, input.rango_salarial_max ?? null,
       input.moneda ?? 'COP', JSON.stringify(input.criterios_evaluacion),
       JSON.stringify(input.habilidades_requeridas), input.experiencia_minima,
-      input.score_minimo ?? 70, userId,
+      input.score_minimo ?? null, userId,
     ]
   );
   return result.rows[0];

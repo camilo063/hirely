@@ -17,6 +17,30 @@ import {
 import { renderPlantillaContrato } from '@/lib/utils/plantillas-contrato-default';
 import { useTiposContrato } from '@/hooks/useTiposContrato';
 
+// Union of every variable across all contract types, deduplicated by key.
+// This is the source of truth for what {{variables}} the templates support.
+const ALL_VARIABLES = Array.from(
+  new Map(
+    (Object.values(VARIABLES_CONTRATO).flat() as { key: string; label: string; fuente?: string }[])
+      .map(v => [v.key, v])
+  ).values()
+);
+
+// Human-readable hint of where each value comes from at render time.
+const FUENTE_LABELS: Record<string, string> = {
+  'candidato.nombre': 'Candidato',
+  'candidato.telefono': 'Candidato',
+  'candidato.email': 'Candidato',
+  'candidato.ubicacion': 'Candidato',
+  'vacante.titulo': 'Vacante',
+  'vacante.modalidad': 'Vacante',
+  'vacante.ubicacion': 'Vacante',
+  'aplicacion.fecha_inicio_tentativa': 'Aplicación',
+  'aplicacion.salario_ofrecido': 'Aplicación',
+  'organization.name': 'Configuración › Empresa',
+  today: 'Automático (fecha de hoy)',
+};
+
 export function PlantillaContratoEditor() {
   const [plantillas, setPlantillas] = useState<PlantillaContrato[]>([]);
   const [selected, setSelected] = useState<PlantillaContrato | null>(null);
@@ -25,6 +49,22 @@ export function PlantillaContratoEditor() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [editShowPreview, setEditShowPreview] = useState(false);
+  const [showVars, setShowVars] = useState(false);
+
+  const copyVar = (key: string) => {
+    const token = `{{${key}}}`;
+    navigator.clipboard?.writeText(token).then(
+      () => toast.success(`Copiado: ${token}`),
+      () => toast.error('No se pudo copiar'),
+    );
+  };
+
+  // Where each variable's value comes from when the contract is generated.
+  const getFuenteHint = (v: { key: string; fuente?: string }): string => {
+    if (v.key.startsWith('empresa_')) return 'Configuración › Empresa';
+    if (v.fuente && FUENTE_LABELS[v.fuente]) return FUENTE_LABELS[v.fuente];
+    return 'Manual (se completa al generar)';
+  };
 
   // New plantilla form
   const [showNew, setShowNew] = useState(false);
@@ -124,6 +164,12 @@ export function PlantillaContratoEditor() {
     sampleData.nombre_completo = 'Juan Pérez García';
     sampleData.cedula = '1.234.567.890';
     sampleData.empresa_nombre = 'Empresa Demo S.A.S.';
+    sampleData.empresa_nit = '900.123.456-7';
+    sampleData.empresa_representante = 'Ana María Gómez';
+    sampleData.empresa_cargo_representante = 'Gerente General';
+    sampleData.empresa_direccion = 'Cra 10 # 20-30, Bogotá D.C.';
+    sampleData.empresa_telefono = '+57 601 234 5678';
+    sampleData.empresa_email = 'contratos@empresademo.com';
     sampleData.cargo = 'Desarrollador Senior';
     sampleData.correo = 'juan.perez@email.com';
     sampleData.telefono = '+57 300 123 4567';
@@ -145,14 +191,63 @@ export function PlantillaContratoEditor() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Gestiona las plantillas HTML para cada tipo de contrato. Usa variables con formato <code className="bg-muted px-1 rounded">{`{{variable}}`}</code>.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">
+            Gestiona las plantillas HTML para cada tipo de contrato. Usa variables con formato <code className="bg-muted px-1 rounded">{`{{variable}}`}</code>.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowVars(v => !v)}
+            className="text-xs text-teal hover:underline"
+          >
+            {showVars ? 'Ocultar variables disponibles' : 'Ver variables disponibles'}
+          </button>
+        </div>
         <Button size="sm" onClick={() => setShowNew(!showNew)}>
           <Plus className="h-4 w-4 mr-1" /> Nueva plantilla
         </Button>
       </div>
+
+      {/* Guía de variables reales — clic para copiar */}
+      {showVars && (
+        <Card className="border-teal/40 bg-muted/30">
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground mb-3">
+              Estas son las variables reales que puedes usar. Escríbelas exactamente como aparecen (incluyendo las llaves dobles). Haz clic en una para copiarla.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-muted-foreground border-b">
+                    <th className="py-1 pr-4 font-medium">Variable</th>
+                    <th className="py-1 pr-4 font-medium">Descripción</th>
+                    <th className="py-1 font-medium">Origen del dato</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ALL_VARIABLES.map(v => (
+                    <tr key={v.key} className="border-b border-muted/50 last:border-0">
+                      <td className="py-1.5 pr-4">
+                        <button
+                          type="button"
+                          onClick={() => copyVar(v.key)}
+                          className="font-mono bg-background border rounded px-1.5 py-0.5 hover:bg-teal/10 hover:border-teal transition-colors"
+                          title="Clic para copiar"
+                        >
+                          {`{{${v.key}}}`}
+                        </button>
+                      </td>
+                      <td className="py-1.5 pr-4 text-muted-foreground">{v.label}</td>
+                      <td className="py-1.5 text-muted-foreground">{getFuenteHint(v)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* New plantilla form */}
       {showNew && (

@@ -23,7 +23,7 @@ export interface Vacante {
   habilidades_requeridas: string[];
   experiencia_minima: number;
   nivel_estudios: string | null;
-  score_minimo: number;
+  score_minimo: number | null; // null = heredar umbral de la organizacion
   linkedin_job_id: string | null;
   slug: string | null;
   is_published: boolean;
@@ -40,6 +40,7 @@ export interface VacanteWithStats extends Vacante {
   nuevos: number;
   en_proceso: number;
   seleccionados: number;
+  umbral_efectivo?: number; // COALESCE(score_minimo, org.umbral_preseleccion, 70)
 }
 
 export interface CreateVacanteInput {
@@ -55,7 +56,7 @@ export interface CreateVacanteInput {
   criterios_evaluacion?: CriterioEvaluacion[] | Record<string, number>;
   habilidades_requeridas: string[];
   experiencia_minima: number;
-  score_minimo?: number;
+  score_minimo?: number | null;
 }
 
 export interface UpdateVacanteInput {
@@ -72,7 +73,7 @@ export interface UpdateVacanteInput {
   criterios_evaluacion?: CriterioEvaluacion[] | Record<string, number>;
   habilidades_requeridas?: string[];
   experiencia_minima?: number;
-  score_minimo?: number;
+  score_minimo?: number | null;
 }
 
 export interface VacanteFilters {

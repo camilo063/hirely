@@ -32,7 +32,10 @@ export async function runScoringPipeline(
       [candidatoId, orgId]
     ),
     pool.query(
-      `SELECT * FROM vacantes WHERE id = $1 AND organization_id = $2`,
+      `SELECT v.*, os.umbral_preseleccion as umbral_org
+       FROM vacantes v
+       LEFT JOIN org_settings os ON os.organization_id = v.organization_id
+       WHERE v.id = $1 AND v.organization_id = $2`,
       [vacanteId, orgId]
     ),
   ]);
@@ -107,8 +110,12 @@ export async function runScoringPipeline(
     } as any;
   }
 
-  // 3. Calcular score
-  const scoreResult = calculateATSScore(cvParsed, vacante);
+  // 3. Calcular score (umbral efectivo: vacante.score_minimo > org.umbral_preseleccion > 70)
+  const scoreResult = calculateATSScore(
+    cvParsed,
+    vacante,
+    vacante.umbral_org != null ? Number(vacante.umbral_org) : null
+  );
   console.log(`[Scoring] Score calculado: ${scoreResult.score_total}/100 | pasa_corte=${scoreResult.pasa_corte} | recomendacion=${scoreResult.recomendacion}`);
 
   // 4. Guardar score, breakdown y actualizar estado

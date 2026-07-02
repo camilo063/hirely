@@ -5,13 +5,13 @@ import { useParams } from 'next/navigation';
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { PipelineCompleto } from '@/components/candidatos/pipeline-completo';
 import { TableSkeleton } from '@/components/shared/loading-skeleton';
-import type { Vacante } from '@/lib/types/vacante.types';
+import type { VacanteWithStats } from '@/lib/types/vacante.types';
 import { SiguientePasoSugerido } from '@/components/vacantes/SiguientePasoSugerido';
 import { toast } from 'sonner';
 
 export default function VacantePipelinePage() {
   const params = useParams();
-  const [vacante, setVacante] = useState<Vacante | null>(null);
+  const [vacante, setVacante] = useState<VacanteWithStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,7 +43,7 @@ export default function VacantePipelinePage() {
       <PipelineCompleto
         vacanteId={params.id as string}
         vacanteTitulo={vacante.titulo}
-        scoreMinimo={vacante.score_minimo || 70}
+        scoreMinimo={vacante.umbral_efectivo ?? vacante.score_minimo ?? 70}
         linkedinJobId={vacante.linkedin_job_id ?? null}
       />
     </div>

@@ -310,7 +310,10 @@ export async function PATCH(
               const configEmpresa = orgConfig.rows[0]?.config_empresa || {};
               if (configEmpresa.nit) datos.empresa_nit = configEmpresa.nit;
               if (configEmpresa.representante_legal) datos.empresa_representante = configEmpresa.representante_legal;
+              if (configEmpresa.cargo_representante) datos.empresa_cargo_representante = configEmpresa.cargo_representante;
               if (configEmpresa.direccion) datos.empresa_direccion = configEmpresa.direccion;
+              if (configEmpresa.telefono_empresa) datos.empresa_telefono = configEmpresa.telefono_empresa;
+              if (configEmpresa.email_empresa) datos.empresa_email = configEmpresa.email_empresa;
               if (configEmpresa.ciudad) datos.ciudad_contrato = configEmpresa.ciudad;
             } catch { /* non-blocking */ }
 

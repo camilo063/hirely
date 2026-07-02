@@ -158,6 +158,14 @@ export function getTransicionesPermitidas(
       return { state, permitida: true, completado };
     }
 
+    // Reactivar un candidato descartado: permitir volver a la revision sin exigir
+    // prerequisitos. El descarte pudo ser automatico (score < umbral) y no dejar
+    // rastro de 'nuevo' en estados_completados, lo que bloquearia 'en_revision'.
+    // Desde ahi, el resto del pipeline avanza normal (cada estado solo exige el anterior).
+    if (estadoActual === 'descartado' && (state.key === 'nuevo' || state.key === 'en_revision')) {
+      return { state, permitida: true, completado };
+    }
+
     // From contratado: only contrato_terminado is allowed
     if (estadoActual === 'contratado' && state.key !== 'contrato_terminado') {
       return { state, permitida: false, razon: 'Candidato ya contratado', completado };

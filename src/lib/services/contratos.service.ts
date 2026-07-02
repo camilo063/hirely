@@ -130,7 +130,10 @@ export async function autoPoblarDatos(
     empresa_nombre: configEmpresa.nombre || row.org_nombre || '',
     empresa_nit: configEmpresa.nit || '',
     empresa_representante: configEmpresa.representante_legal || '',
+    empresa_cargo_representante: configEmpresa.cargo_representante || '',
     empresa_direccion: configEmpresa.direccion || '',
+    empresa_telefono: configEmpresa.telefono_empresa || '',
+    empresa_email: configEmpresa.email_empresa || '',
     salario: salario,
     modalidad: row.vacante_modalidad || '',
     ubicacion_trabajo: row.vacante_ubicacion || '',
@@ -353,7 +356,10 @@ export async function regenerarHtml(
     datos.empresa_nombre = org.name || datos.empresa_nombre;
     if (cfg.nit) datos.empresa_nit = cfg.nit;
     if (cfg.representante_legal) datos.empresa_representante = cfg.representante_legal;
+    if (cfg.cargo_representante) datos.empresa_cargo_representante = cfg.cargo_representante;
     if (cfg.direccion) datos.empresa_direccion = cfg.direccion;
+    if (cfg.telefono_empresa) datos.empresa_telefono = cfg.telefono_empresa;
+    if (cfg.email_empresa) datos.empresa_email = cfg.email_empresa;
     if (cfg.ciudad) datos.ciudad_contrato = cfg.ciudad;
   }
 
