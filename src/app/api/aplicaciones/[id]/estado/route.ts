@@ -11,6 +11,7 @@ import { enviarParaFirma } from '@/lib/services/firma-electronica.service';
 import { createContrato, autoPoblarDatos } from '@/lib/services/contratos.service';
 import { registrarOnboardingContratado } from '@/lib/services/onboarding.service';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
+import { getPipelineEstadosConfig } from '@/lib/services/pipeline-config.service';
 
 export const maxDuration = 10;
 
@@ -51,7 +52,7 @@ export async function PATCH(
 
     // 2. Validate transition using state machine
     const allowAuto = body.forzar_auto === true;
-    const transiciones = getTransicionesPermitidas(estadoActual, estadosCompletados, { allowAuto });
+    const transiciones = getTransicionesPermitidas(estadoActual, estadosCompletados, { allowAuto, estados: await getPipelineEstadosConfig(orgId) });
     const transicion = transiciones.find((t) => t.state.key === nuevoEstado);
 
     if (!transicion || !transicion.permitida) {

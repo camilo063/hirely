@@ -52,7 +52,9 @@ export interface Aplicacion {
   scored_at: string | null;
   score_ia: number | null;
   score_humano: number | null;
+  score_tecnico: number | null;
   score_final: number | null;
+  evaluacion_humana: { valores?: Record<string, number>; observaciones?: string | null; evaluated_at?: string } | null;
   score_ats_error: string | null;
   score_ats_intentos: number;
   notas_internas: string | null;

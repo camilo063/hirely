@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { User, Mail, Phone, Linkedin, Briefcase, MapPin, FileText, Trash2, Loader2, CheckCircle2, XCircle, Clock, Upload, FolderOpen } from 'lucide-react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { User, Mail, Phone, Linkedin, Briefcase, MapPin, FileText, Trash2, Loader2, CheckCircle2, XCircle, Clock, Upload, FolderOpen, CalendarClock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,8 @@ import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { TableSkeleton } from '@/components/shared/loading-skeleton';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { SelectorEstadoAplicacion } from '@/components/candidatos/selector-estado-aplicacion';
+import { ScoreBadge } from '@/components/candidatos/score-badge';
+import { AgendarEntrevistaModal } from '@/components/entrevistas/agendar-entrevista-modal';
 import { Candidato, AplicacionConVacante } from '@/lib/types/candidato.types';
 import { getFuenteColor } from '@/lib/utils/design-tokens';
 import { toast } from 'sonner';
@@ -23,10 +25,15 @@ import { toast } from 'sonner';
 export default function CandidatoDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [candidato, setCandidato] = useState<Candidato | null>(null);
   const [aplicaciones, setAplicaciones] = useState<AplicacionConVacante[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  // Evaluacion tab state
+  const [camposLabels, setCamposLabels] = useState<Record<string, string>>({});
+  const [agendarApp, setAgendarApp] = useState<AplicacionConVacante | null>(null);
 
   // Documentos tab state
   interface DocumentoItem {
@@ -106,6 +113,24 @@ export default function CandidatoDetailPage() {
     fetchCandidato();
     fetchAplicaciones();
   }, [params.id]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/configuracion/evaluacion-campos');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) {
+          const map: Record<string, string> = {};
+          for (const campo of data.data) {
+            if (campo?.campo_key) map[campo.campo_key] = campo.label || campo.campo_key;
+          }
+          setCamposLabels(map);
+        }
+      } catch {
+        // silent - fallback to raw keys
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (aplicaciones.length > 0) {
@@ -244,11 +269,12 @@ export default function CandidatoDetailPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="perfil" className="space-y-4">
+      <Tabs defaultValue={searchParams.get('tab') || 'perfil'} className="space-y-4">
         <TabsList>
           <TabsTrigger value="perfil">Perfil</TabsTrigger>
           <TabsTrigger value="cv">CV Parseado</TabsTrigger>
           <TabsTrigger value="aplicaciones">Aplicaciones</TabsTrigger>
+          <TabsTrigger value="evaluacion">Evaluación</TabsTrigger>
           <TabsTrigger value="documentos">Documentos</TabsTrigger>
         </TabsList>
 
@@ -435,6 +461,87 @@ export default function CandidatoDetailPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="evaluacion" className="space-y-4">
+          {aplicaciones.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-center text-muted-foreground py-8">
+                  Este candidato no tiene aplicaciones con evaluación.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            aplicaciones.map((app) => {
+              const scores: { label: string; value: number | null; highlight?: boolean }[] = [
+                { label: 'Score ATS', value: app.score_ats },
+                { label: 'Score IA', value: app.score_ia },
+                { label: 'Prueba técnica', value: app.score_tecnico },
+                { label: 'Score Humano', value: app.score_humano },
+                { label: 'Score Final (ponderado)', value: app.score_final, highlight: true },
+              ];
+              const valores = app.evaluacion_humana?.valores;
+              return (
+                <Card key={app.id}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between gap-2">
+                      <CardTitle className="text-base">{app.vacante_titulo}</CardTitle>
+                      <Badge variant="outline" className="text-[10px]">{app.estado.replace(/_/g, ' ')}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div>
+                      <p className="text-sm font-medium text-navy mb-3">Desglose de scores</p>
+                      <div className="flex flex-wrap gap-x-8 gap-y-3">
+                        {scores.map((s) => (
+                          <div key={s.label} className={s.highlight ? 'pl-3 border-l-2 border-teal' : ''}>
+                            <p className="text-xs text-muted-foreground mb-1">{s.label}</p>
+                            {s.value !== null && s.value !== undefined ? (
+                              <ScoreBadge score={Number(s.value)} size="sm" />
+                            ) : (
+                              <span className="text-sm text-muted-foreground">—</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {valores && Object.keys(valores).length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium text-navy mb-2">Evaluación humana</p>
+                        <div className="space-y-1">
+                          {Object.entries(valores).map(([key, valor]) => (
+                            <div key={key} className="flex items-center justify-between text-sm border-b last:border-0 py-1">
+                              <span className="text-muted-foreground">{camposLabels[key] || key}</span>
+                              <span className="font-medium">{valor}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {app.evaluacion_humana?.observaciones && (
+                          <div className="mt-3 p-3 bg-soft-gray/50 rounded-lg text-sm">
+                            <p className="text-xs font-medium text-muted-foreground mb-1">Observaciones</p>
+                            <p className="whitespace-pre-wrap">{app.evaluacion_humana.observaciones}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div>
+                      <Button
+                        size="sm"
+                        onClick={() => setAgendarApp(app)}
+                        className="bg-teal hover:bg-teal/90"
+                      >
+                        <CalendarClock className="h-4 w-4 mr-2" />
+                        Agendar entrevista (Meet)
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </TabsContent>
+
         <TabsContent value="documentos">
           <Card>
             <CardHeader><CardTitle className="text-base">Documentos del candidato</CardTitle></CardHeader>
@@ -615,6 +722,18 @@ export default function CandidatoDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {agendarApp && (
+        <AgendarEntrevistaModal
+          aplicacionId={agendarApp.id}
+          candidatoId={agendarApp.candidato_id}
+          vacanteId={agendarApp.vacante_id}
+          candidatoNombre={candidato ? `${candidato.nombre} ${candidato.apellido}` : ''}
+          open={!!agendarApp}
+          onOpenChange={(o) => { if (!o) setAgendarApp(null); }}
+          onSuccess={fetchAplicaciones}
+        />
+      )}
 
       <ConfirmDialog
         open={deleteOpen}

@@ -302,12 +302,15 @@ export async function guardarRespuestas(
     console.error('[Evaluacion Tecnica] Error recalculando score_final:', err);
   }
 
-  // Update pipeline estado to 'evaluado'
+  // Completar la prueba tecnica deja al candidato en el estado "Prueba técnica"
+  // (key 'entrevista_ia'). El estado 'evaluado' ("A evaluar") es posterior a la
+  // Entrevista Humana y captura la evaluación humana, no la técnica.
+  // Solo avanza desde estados previos a la prueba técnica (no retrocede).
   await pool.query(
     `UPDATE aplicaciones SET
-       estado = 'evaluado',
+       estado = 'entrevista_ia',
        updated_at = NOW()
-     WHERE id = $1 AND estado IN ('nuevo','en_revision','preseleccionado','entrevista_ia','entrevista_humana')`,
+     WHERE id = $1 AND estado IN ('nuevo','en_revision','revisado','preseleccionado')`,
     [ev.aplicacion_id]
   );
 

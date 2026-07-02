@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScoreBadge } from '@/components/candidatos/score-badge';
@@ -30,6 +31,15 @@ interface Props {
 }
 
 export function ScoringDualDashboard({ candidatos, onSelectCandidato, selectedId }: Props) {
+  const router = useRouter();
+
+  // Si el contenedor pasa un handler, lo usa; si no, navega al detalle del candidato
+  // (Evaluación) donde se ve el desglose completo de scores y se agenda el Meet.
+  const handleRowClick = (c: CandidatoScore) => {
+    if (onSelectCandidato) onSelectCandidato(c);
+    else router.push(`/candidatos/${c.id}?tab=evaluacion`);
+  };
+
   if (candidatos.length === 0) {
     return (
       <Card>
@@ -102,7 +112,7 @@ export function ScoringDualDashboard({ candidatos, onSelectCandidato, selectedId
                     <tr
                       key={c.id}
                       className={`border-b last:border-0 cursor-pointer hover:bg-soft-gray/50 transition-colors ${selectedId === c.id ? 'bg-teal/5' : ''}`}
-                      onClick={() => onSelectCandidato?.(c)}
+                      onClick={() => handleRowClick(c)}
                     >
                       <td className="py-3 pr-4">
                         <p className="font-medium text-navy">{c.nombre} {c.apellido || ''}</p>

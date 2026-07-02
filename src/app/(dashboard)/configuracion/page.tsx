@@ -13,6 +13,8 @@ import { LinkedInConnectButton } from '@/components/linkedin/linkedin-connect-bu
 import { ChecklistConfig } from '@/components/configuracion/checklist-config';
 import { PlantillaEditor } from '@/components/onboarding/plantilla-editor';
 import { DocumentosOnboardingConfig } from '@/components/onboarding/documentos-onboarding-config';
+import { PipelineEstadosConfig } from '@/components/configuracion/pipeline-estados-config';
+import { EvaluacionCamposConfig } from '@/components/configuracion/evaluacion-campos-config';
 import { PlantillaContratoEditor } from '@/components/contratos/plantilla-contrato-editor';
 import { TiposContratoConfig } from '@/components/configuracion/tipos-contrato-config';
 import { TipoPlantillaMapeo } from '@/components/configuracion/tipo-plantilla-mapeo';
@@ -363,6 +365,14 @@ function ConfiguracionPage() {
               </Button>
             </CardContent>
           </Card>
+
+          <div className="mt-6">
+            <PipelineEstadosConfig />
+          </div>
+
+          <div className="mt-6">
+            <EvaluacionCamposConfig />
+          </div>
         </TabsContent>
 
         <TabsContent value="empresa">

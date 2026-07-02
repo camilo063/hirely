@@ -9,9 +9,10 @@ export interface PipelineState {
   label: string;
   color: string; // tailwind class
   orden: number;
-  prerequisitos: string[];
+  prerequisitos: string[]; // informativo; el orden real lo impone `orden` (prereq lineal)
   descripcion: string;
   automatico?: boolean;
+  activo?: boolean; // false = estado desactivado por la organizacion (no aparece)
 }
 
 export interface TransicionInfo {
@@ -48,27 +49,27 @@ export const PIPELINE_STATES_CONFIG: PipelineState[] = [
   },
   {
     key: 'entrevista_ia',
-    label: 'Entrevista IA',
+    label: 'Prueba técnica',
     color: 'bg-amber-500',
     orden: 4,
     prerequisitos: ['preseleccionado'],
-    descripcion: 'Candidato en proceso de entrevista con IA',
-  },
-  {
-    key: 'evaluado',
-    label: 'Evaluado',
-    color: 'bg-teal-500',
-    orden: 5,
-    prerequisitos: ['preseleccionado'],
-    descripcion: 'Candidato evaluado tecnica y/o conductualmente',
+    descripcion: 'Candidato en etapa de prueba técnica (módulo de Evaluaciones Técnicas)',
   },
   {
     key: 'entrevista_humana',
     label: 'Entrevista humana',
     color: 'bg-pink-500',
-    orden: 6,
-    prerequisitos: ['preseleccionado'],
+    orden: 5,
+    prerequisitos: ['entrevista_ia'],
     descripcion: 'Candidato en entrevista con el equipo',
+  },
+  {
+    key: 'evaluado',
+    label: 'A evaluar',
+    color: 'bg-teal-500',
+    orden: 6,
+    prerequisitos: ['entrevista_humana'],
+    descripcion: 'Pendiente de registrar la evaluación humana (actitud, liderazgo, etc.)',
   },
   {
     key: 'seleccionado',
@@ -136,13 +137,26 @@ export const PIPELINE_STATES_MAP = new Map(
 export function getTransicionesPermitidas(
   estadoActual: string,
   estadosCompletados: string[],
-  options?: { allowAuto?: boolean }
+  options?: { allowAuto?: boolean; estados?: PipelineState[] }
 ): TransicionInfo[] {
+  // Catalogo efectivo: el de la organizacion (merge) o los defaults. Solo activos.
+  const estados = (options?.estados ?? PIPELINE_STATES_CONFIG).filter((s) => s.activo !== false);
+
   const completadosSet = new Set(estadosCompletados);
   // The current state counts as "completed" for prerequisite checks
   completadosSet.add(estadoActual);
 
-  return PIPELINE_STATES_CONFIG.map((state) => {
+  // Estados "de flujo" (excluye descartado) ordenados por `orden`.
+  // El prerequisito de cada estado es el estado de flujo inmediatamente anterior.
+  const flujo = estados
+    .filter((s) => s.key !== 'descartado')
+    .sort((a, b) => a.orden - b.orden);
+  const prereqDe = (key: string): PipelineState | null => {
+    const idx = flujo.findIndex((s) => s.key === key);
+    return idx > 0 ? flujo[idx - 1] : null;
+  };
+
+  return estados.map((state) => {
     const completado = completadosSet.has(state.key);
 
     // Current state is not a valid transition target
@@ -158,10 +172,8 @@ export function getTransicionesPermitidas(
       return { state, permitida: true, completado };
     }
 
-    // Reactivar un candidato descartado: permitir volver a la revision sin exigir
-    // prerequisitos. El descarte pudo ser automatico (score < umbral) y no dejar
-    // rastro de 'nuevo' en estados_completados, lo que bloquearia 'en_revision'.
-    // Desde ahi, el resto del pipeline avanza normal (cada estado solo exige el anterior).
+    // Reactivar un candidato descartado: permitir volver al inicio del flujo sin exigir
+    // prerequisitos (el descarte pudo ser automatico y no dejar rastro en estados_completados).
     if (estadoActual === 'descartado' && (state.key === 'nuevo' || state.key === 'en_revision')) {
       return { state, permitida: true, completado };
     }
@@ -181,21 +193,10 @@ export function getTransicionesPermitidas(
       return { state, permitida: false, razon: 'Este estado se asigna automaticamente', completado };
     }
 
-    // Check prerequisites
-    const prerequisitosFaltantes = state.prerequisitos.filter(
-      (p) => !completadosSet.has(p)
-    );
-
-    if (prerequisitosFaltantes.length > 0) {
-      const faltantes = prerequisitosFaltantes
-        .map((p) => PIPELINE_STATES_MAP.get(p)?.label || p)
-        .join(', ');
-      return {
-        state,
-        permitida: false,
-        razon: `Requiere completar: ${faltantes}`,
-        completado,
-      };
+    // Prerequisito lineal por orden: el estado de flujo anterior debe estar completado.
+    const prereq = prereqDe(state.key);
+    if (prereq && !completadosSet.has(prereq.key)) {
+      return { state, permitida: false, razon: `Requiere completar: ${prereq.label}`, completado };
     }
 
     return { state, permitida: true, completado };

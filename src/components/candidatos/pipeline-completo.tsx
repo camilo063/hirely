@@ -28,7 +28,6 @@ import { AplicacionConCandidato } from '@/lib/types/candidato.types';
 import { EstadoAplicacion } from '@/lib/types/common.types';
 import type { ScoreBreakdown as ScoreBreakdownType } from '@/lib/types/scoring.types';
 import { toast } from 'sonner';
-import { EntrevistaIATrigger } from '@/components/entrevistas/entrevista-ia-trigger';
 import { SeleccionarCandidatoBtn } from '@/components/seleccion/seleccionar-candidato-btn';
 import { RechazarCandidatosBtn } from '@/components/seleccion/rechazar-candidatos-btn';
 import { DocumentosChecklist } from '@/components/seleccion/documentos-checklist';
@@ -735,17 +734,6 @@ function CandidatoDetailPanel({
           <p className="text-xs text-muted-foreground mt-2">{aplicacion.score_ats_resumen}</p>
         )}
       </div>
-
-      {/* Entrevista IA button */}
-      {score !== null && score >= scoreMinimo && aplicacion.estado !== 'seleccionado' && aplicacion.estado !== 'contratado' && (
-        <EntrevistaIATrigger
-          aplicacionId={aplicacion.id}
-          candidatoNombre={`${candidato.nombre} ${candidato.apellido}`}
-          candidatoTelefono={candidato.telefono || null}
-          vacanteTitulo={vacanteTitulo}
-          onSuccess={onRefresh}
-        />
-      )}
 
       {/* Selection buttons */}
       {['entrevista_humana', 'evaluado'].includes(aplicacion.estado) && (

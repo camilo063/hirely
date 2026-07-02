@@ -44,8 +44,9 @@ const PIPELINE_STAGES = [
   { key: 'nuevo', label: 'Nuevo', color: 'bg-gray-400' },
   { key: 'en_revision', label: 'Revision', color: 'bg-blue-400' },
   { key: 'preseleccionado', label: 'Preselec.', color: 'bg-purple-400' },
-  { key: 'entrevista_ia', label: 'Entrev. IA', color: 'bg-indigo-400' },
+  { key: 'entrevista_ia', label: 'Prueba téc.', color: 'bg-indigo-400' },
   { key: 'entrevista_humana', label: 'Entrev. H', color: 'bg-amber-400' },
+  { key: 'evaluado', label: 'A evaluar', color: 'bg-teal-400' },
   { key: 'seleccionado', label: 'Seleccion', color: 'bg-green-400' },
   { key: 'contratado', label: 'Contratado', color: 'bg-emerald-500' },
 ];

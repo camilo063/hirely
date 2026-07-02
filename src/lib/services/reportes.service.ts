@@ -11,11 +11,11 @@ import type {
 
 const ORDEN_ETAPAS = [
   { key: 'nuevo', label: 'Nuevos', color: '#6366f1' },
-  { key: 'revisado', label: 'Revisados', color: '#8b5cf6' },
+  { key: 'en_revision', label: 'En revisión', color: '#8b5cf6' },
   { key: 'preseleccionado', label: 'Preseleccionados', color: '#00BCD4' },
-  { key: 'entrevista_ia', label: 'Entrevista IA', color: '#0ea5e9' },
+  { key: 'entrevista_ia', label: 'Prueba técnica', color: '#0ea5e9' },
   { key: 'entrevista_humana', label: 'Entrevista Humana', color: '#10b981' },
-  { key: 'evaluado', label: 'Evaluados', color: '#f59e0b' },
+  { key: 'evaluado', label: 'A evaluar', color: '#f59e0b' },
   { key: 'seleccionado', label: 'Seleccionados', color: '#FF6B35' },
   { key: 'contratado', label: 'Contratados', color: '#10B981' },
 ];

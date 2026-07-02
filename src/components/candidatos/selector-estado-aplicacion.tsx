@@ -33,6 +33,8 @@ import {
 } from '@/lib/constants/pipeline-states';
 import { DialogTerminacionContrato } from './dialog-terminacion-contrato';
 import { ContratarModal } from '@/components/onboarding/contratar-modal';
+import { EvaluacionHumanaModal } from '@/components/candidatos/evaluacion-humana-modal';
+import { usePipelineEstados } from '@/hooks/usePipelineEstados';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -81,6 +83,7 @@ export function SelectorEstadoAplicacion({
   const [loading, setLoading] = useState(false);
   const [terminacionOpen, setTerminacionOpen] = useState(false);
   const [contratarOpen, setContratarOpen] = useState(false);
+  const [evaluarOpen, setEvaluarOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     estado: string;
@@ -88,8 +91,10 @@ export function SelectorEstadoAplicacion({
     description: string;
   }>({ open: false, estado: '', title: '', description: '' });
 
-  const currentState = PIPELINE_STATES_MAP.get(estadoActual);
-  const transiciones = getTransicionesPermitidas(estadoActual, estadosCompletados);
+  // Catalogo de estados de la organizacion (nombres/orden/activo configurables)
+  const { estados } = usePipelineEstados();
+  const currentState = estados.find((s) => s.key === estadoActual) || PIPELINE_STATES_MAP.get(estadoActual);
+  const transiciones = getTransicionesPermitidas(estadoActual, estadosCompletados, { estados });
 
   async function cambiarEstado(nuevoEstado: string, motivoDescarte?: string) {
     setLoading(true);
@@ -161,6 +166,14 @@ export function SelectorEstadoAplicacion({
       // email de onboarding). El modal hace el PATCH a 'contratado'.
       setOpen(false);
       setContratarOpen(true);
+      return;
+    }
+
+    if (key === 'evaluado') {
+      // Abre el modal de evaluacion humana (campos configurables 1-5).
+      // El modal guarda la evaluacion y transiciona a 'evaluado' ("A evaluar").
+      setOpen(false);
+      setEvaluarOpen(true);
       return;
     }
 
@@ -295,6 +308,14 @@ export function SelectorEstadoAplicacion({
         fechaInicioTentativa={fechaInicioTentativa}
         open={contratarOpen}
         onOpenChange={setContratarOpen}
+        onSuccess={() => onEstadoCambiado?.()}
+      />
+
+      <EvaluacionHumanaModal
+        aplicacionId={aplicacionId}
+        candidatoNombre={candidatoNombre}
+        open={evaluarOpen}
+        onOpenChange={setEvaluarOpen}
         onSuccess={() => onEstadoCambiado?.()}
       />
     </TooltipProvider>
