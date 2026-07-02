@@ -134,6 +134,8 @@ export async function autoPoblarDatos(
     empresa_direccion: configEmpresa.direccion || '',
     empresa_telefono: configEmpresa.telefono_empresa || '',
     empresa_email: configEmpresa.email_empresa || '',
+    empresa_departamento: configEmpresa.departamento || '',
+    empresa_pais: configEmpresa.pais || '',
     salario: salario,
     modalidad: row.vacante_modalidad || '',
     ubicacion_trabajo: row.vacante_ubicacion || '',
@@ -360,6 +362,8 @@ export async function regenerarHtml(
     if (cfg.direccion) datos.empresa_direccion = cfg.direccion;
     if (cfg.telefono_empresa) datos.empresa_telefono = cfg.telefono_empresa;
     if (cfg.email_empresa) datos.empresa_email = cfg.email_empresa;
+    if (cfg.departamento) datos.empresa_departamento = cfg.departamento;
+    if (cfg.pais) datos.empresa_pais = cfg.pais;
     if (cfg.ciudad) datos.ciudad_contrato = cfg.ciudad;
   }
 

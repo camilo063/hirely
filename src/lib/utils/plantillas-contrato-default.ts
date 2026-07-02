@@ -335,9 +335,10 @@ export function renderPlantillaContrato(
     const strValue = typeof value === 'number'
       ? new Intl.NumberFormat('es-CO').format(value)
       : String(value);
-    html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), strValue);
+    // Tolera espacios dentro de las llaves: {{key}} y {{ key }}
+    html = html.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), strValue);
   }
-  // Clean any remaining unreplaced variables
-  html = html.replace(/\{\{[a-z_]+\}\}/g, '');
+  // Limpia cualquier variable no reemplazada (con o sin espacios, may/min, dígitos, puntos)
+  html = html.replace(/\{\{\s*[\w.]+\s*\}\}/g, '');
   return html;
 }

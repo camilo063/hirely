@@ -72,6 +72,8 @@ export interface DatosContrato {
   empresa_direccion?: string;
   empresa_telefono?: string;
   empresa_email?: string;
+  empresa_departamento?: string;
+  empresa_pais?: string;
   cargo: string;
 
   // Manual
@@ -163,6 +165,8 @@ export const VARIABLES_CONTRATO: Record<TipoContrato, VariableContrato[]> = {
     { key: 'empresa_cargo_representante', label: 'Cargo del representante legal', tipo: 'manual', required: false },
     { key: 'empresa_telefono', label: 'Teléfono de la empresa', tipo: 'manual', required: false },
     { key: 'empresa_email', label: 'Correo de la empresa', tipo: 'manual', required: false },
+    { key: 'empresa_departamento', label: 'Departamento de la empresa', tipo: 'manual', required: false },
+    { key: 'empresa_pais', label: 'País de la empresa', tipo: 'manual', required: false },
     { key: 'cargo', label: 'Cargo / Objeto del servicio', tipo: 'auto', fuente: 'vacante.titulo', required: true },
     { key: 'objeto_contrato', label: 'Objeto del contrato', tipo: 'manual', required: true },
     { key: 'obligaciones', label: 'Obligaciones del contratista', tipo: 'manual', required: false },
@@ -187,6 +191,8 @@ export const VARIABLES_CONTRATO: Record<TipoContrato, VariableContrato[]> = {
     { key: 'empresa_cargo_representante', label: 'Cargo del representante legal', tipo: 'manual', required: false },
     { key: 'empresa_telefono', label: 'Teléfono de la empresa', tipo: 'manual', required: false },
     { key: 'empresa_email', label: 'Correo de la empresa', tipo: 'manual', required: false },
+    { key: 'empresa_departamento', label: 'Departamento de la empresa', tipo: 'manual', required: false },
+    { key: 'empresa_pais', label: 'País de la empresa', tipo: 'manual', required: false },
     { key: 'cargo', label: 'Cargo / Rol', tipo: 'auto', fuente: 'vacante.titulo', required: true },
     { key: 'objeto_contrato', label: 'Descripción del servicio', tipo: 'manual', required: true },
     { key: 'fecha_inicio', label: 'Fecha de inicio', tipo: 'auto', fuente: 'aplicacion.fecha_inicio_tentativa', required: true },
@@ -210,6 +216,8 @@ export const VARIABLES_CONTRATO: Record<TipoContrato, VariableContrato[]> = {
     { key: 'empresa_cargo_representante', label: 'Cargo del representante legal', tipo: 'manual', required: false },
     { key: 'empresa_telefono', label: 'Teléfono de la empresa', tipo: 'manual', required: false },
     { key: 'empresa_email', label: 'Correo de la empresa', tipo: 'manual', required: false },
+    { key: 'empresa_departamento', label: 'Departamento de la empresa', tipo: 'manual', required: false },
+    { key: 'empresa_pais', label: 'País de la empresa', tipo: 'manual', required: false },
     { key: 'empresa_direccion', label: 'Dirección de la empresa', tipo: 'manual', required: false },
     { key: 'cargo', label: 'Cargo', tipo: 'auto', fuente: 'vacante.titulo', required: true },
     { key: 'fecha_inicio', label: 'Fecha de inicio', tipo: 'auto', fuente: 'aplicacion.fecha_inicio_tentativa', required: true },

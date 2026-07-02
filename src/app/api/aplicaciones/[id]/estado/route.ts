@@ -314,6 +314,8 @@ export async function PATCH(
               if (configEmpresa.direccion) datos.empresa_direccion = configEmpresa.direccion;
               if (configEmpresa.telefono_empresa) datos.empresa_telefono = configEmpresa.telefono_empresa;
               if (configEmpresa.email_empresa) datos.empresa_email = configEmpresa.email_empresa;
+              if (configEmpresa.departamento) datos.empresa_departamento = configEmpresa.departamento;
+              if (configEmpresa.pais) datos.empresa_pais = configEmpresa.pais;
               if (configEmpresa.ciudad) datos.ciudad_contrato = configEmpresa.ciudad;
             } catch { /* non-blocking */ }
 

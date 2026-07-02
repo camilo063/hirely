@@ -6,15 +6,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Plus, Save, Trash2, Loader2, FileText, Eye, Code } from 'lucide-react';
 import {
-  PlantillaContrato, TipoContrato,
-  TIPO_CONTRATO_LABELS, VARIABLES_CONTRATO,
+  PlantillaContrato, TipoContrato, VARIABLES_CONTRATO,
 } from '@/lib/types/contrato.types';
 import { renderPlantillaContrato } from '@/lib/utils/plantillas-contrato-default';
+import { mapEmpresaConfigToDatos } from '@/lib/utils/empresa-contrato';
 import { useTiposContrato } from '@/hooks/useTiposContrato';
 
 // Union of every variable across all contract types, deduplicated by key.
@@ -50,6 +50,9 @@ export function PlantillaContratoEditor() {
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [editShowPreview, setEditShowPreview] = useState(false);
   const [showVars, setShowVars] = useState(false);
+  // Datos reales de la empresa (Configuración › Empresa) para que la vista
+  // previa refleje la información verdadera y no datos de ejemplo.
+  const [empresaData, setEmpresaData] = useState<Record<string, string>>({});
 
   const copyVar = (key: string) => {
     const token = `{{${key}}}`;
@@ -86,7 +89,16 @@ export function PlantillaContratoEditor() {
     }
   }, []);
 
-  useEffect(() => { fetchPlantillas(); }, [fetchPlantillas]);
+  const fetchEmpresa = useCallback(async () => {
+    try {
+      const res = await fetch('/api/configuracion/empresa');
+      if (!res.ok) return;
+      const json = await res.json();
+      setEmpresaData(mapEmpresaConfigToDatos(json.data || {}));
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchPlantillas(); fetchEmpresa(); }, [fetchPlantillas, fetchEmpresa]);
 
   const handleCreate = async () => {
     if (!newNombre || !newHtml) {
@@ -161,21 +173,25 @@ export function PlantillaContratoEditor() {
     for (const v of vars) {
       sampleData[v.key] = v.default_value || `[${v.label}]`;
     }
+    // Datos del candidato/vacante: son de ejemplo (se completan al generar
+    // el contrato real desde una aplicación).
     sampleData.nombre_completo = 'Juan Pérez García';
     sampleData.cedula = '1.234.567.890';
-    sampleData.empresa_nombre = 'Empresa Demo S.A.S.';
-    sampleData.empresa_nit = '900.123.456-7';
-    sampleData.empresa_representante = 'Ana María Gómez';
-    sampleData.empresa_cargo_representante = 'Gerente General';
-    sampleData.empresa_direccion = 'Cra 10 # 20-30, Bogotá D.C.';
-    sampleData.empresa_telefono = '+57 601 234 5678';
-    sampleData.empresa_email = 'contratos@empresademo.com';
     sampleData.cargo = 'Desarrollador Senior';
     sampleData.correo = 'juan.perez@email.com';
     sampleData.telefono = '+57 300 123 4567';
     sampleData.fecha_inicio = new Date().toLocaleDateString('es-CO');
     sampleData.fecha_contrato = new Date().toLocaleDateString('es-CO');
     sampleData.salario = '5.000.000';
+
+    // Datos de la empresa: usamos los REALES de Configuración › Empresa para
+    // que la vista previa sirva para verificar que la información es correcta.
+    // Si un campo está vacío en la configuración, se muestra un aviso claro.
+    for (const [key, value] of Object.entries(empresaData)) {
+      sampleData[key] = value.trim()
+        ? value
+        : `[⚠ Falta en Configuración › Empresa]`;
+    }
     return renderPlantillaContrato(html, sampleData);
   };
 
