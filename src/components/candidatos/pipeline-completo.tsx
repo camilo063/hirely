@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import useSWR from 'swr';
+import { fetcher, swrConfig } from '@/lib/swr';
 import { PipelineKanban } from '@/components/candidatos/pipeline-kanban';
 import { LinkedInApplicantsAlert } from '@/components/vacantes/linkedin-applicants-alert';
 import { ScoreBadge } from '@/components/candidatos/score-badge';
@@ -118,29 +120,35 @@ export function PipelineCompleto({
   scoreMinimo,
   linkedinJobId,
 }: PipelineCompletoProps) {
+  // Lista via SWR: revalida al enfocar la pestaña y cada 60s mientras se ve
+  // (solo con la pestaña activa), asi el pipeline refleja nuevos aplicantes sin
+  // recargar. Los updates optimistas locales se mantienen sobre `aplicaciones`
+  // y se re-sincronizan cuando SWR revalida (el servidor es la fuente de verdad).
+  const {
+    data: pipelineData,
+    isLoading,
+    mutate: mutatePipeline,
+  } = useSWR(`/api/vacantes/${vacanteId}/candidatos`, fetcher, {
+    ...swrConfig,
+    refreshInterval: 60000,
+  });
+
   const [aplicaciones, setAplicaciones] = useState<AplicacionConCandidato[]>([]);
-  const [loading, setLoading] = useState(true);
   const [scoringLoading, setScoringLoading] = useState(false);
   const [rescoringId, setRescoringId] = useState<string | null>(null);
   const [filterPasaCorte, setFilterPasaCorte] = useState(false);
   const [selectedAplicacion, setSelectedAplicacion] = useState<AplicacionConCandidato | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
 
-  const fetchData = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/vacantes/${vacanteId}/candidatos`);
-      const data = await res.json();
-      if (data.success) setAplicaciones(data.data || []);
-    } catch {
-      toast.error('Error cargando pipeline');
-    } finally {
-      setLoading(false);
-    }
-  }, [vacanteId]);
-
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (pipelineData?.success) setAplicaciones(pipelineData.data || []);
+    else if (pipelineData && !pipelineData.success) toast.error('Error cargando pipeline');
+  }, [pipelineData]);
+
+  const loading = isLoading && !pipelineData;
+
+  // Revalida la lista al instante tras acciones in-app (cambio de estado, scoring).
+  const fetchData = useCallback(() => mutatePipeline(), [mutatePipeline]);
 
   async function handleMoveAplicacion(aplicacionId: string, nuevoEstado: EstadoAplicacion) {
     try {

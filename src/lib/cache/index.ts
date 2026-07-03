@@ -24,6 +24,11 @@ export const cacheEnabled = redis !== null;
  *  explicita mantiene la frescura; el TTL es solo una red de seguridad. */
 export const CONFIG_TTL = 60 * 60; // 1 hora
 
+/** TTL para metricas/agregaciones (dashboard, reportes). Son datos derivados y
+ *  pesados que toleran estar ligeramente desactualizados; NO se invalidan de
+ *  forma explicita, el TTL corto es suficiente. */
+export const METRICS_TTL = 45; // segundos
+
 /**
  * Read-through: devuelve el valor cacheado o ejecuta `fn`, cachea su resultado
  * y lo devuelve. Si no hay cache configurado o Upstash falla, ejecuta `fn`
@@ -94,6 +99,13 @@ export const cacheKeys = {
   scoringConfig: (orgId: string) => `org:${orgId}:scoring-config`,
   emailsConfig: (orgId: string) => `org:${orgId}:emails-config`,
   notificacionConfig: (orgId: string) => `org:${orgId}:notificacion-config`,
+
+  // Metricas/agregaciones (nivel tibio, TTL corto).
+  dashboard: (orgId: string) => `org:${orgId}:dashboard`,
+  // `report` = kpis|funnel|tiempos|volumen|top-vacantes|scores.
+  // `variant` = serializacion de los filtros que afectan el resultado ('' si no hay).
+  reportes: (orgId: string, report: string, variant = '') =>
+    `org:${orgId}:reportes:${report}${variant ? `:${variant}` : ''}`,
 } as const;
 
 /**

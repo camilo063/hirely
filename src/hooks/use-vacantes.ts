@@ -1,43 +1,36 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import useSWR from 'swr';
 import { VacanteWithStats, VacanteFilters } from '@/lib/types/vacante.types';
 import { useDebounce } from './use-debounce';
+import { fetcher, swrConfig } from '@/lib/swr';
 
 export function useVacantes(initialFilters?: VacanteFilters) {
-  const [vacantes, setVacantes] = useState<VacanteWithStats[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(initialFilters?.search || '');
   const [estado, setEstado] = useState(initialFilters?.estado || '');
   const debouncedSearch = useDebounce(search, 300);
 
-  const fetchVacantes = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: '20' });
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      if (estado) params.set('estado', estado);
+  const params = new URLSearchParams({ page: String(page), limit: '20' });
+  if (debouncedSearch) params.set('search', debouncedSearch);
+  if (estado) params.set('estado', estado);
+  const key = `/api/vacantes?${params.toString()}`;
 
-      const res = await fetch(`/api/vacantes?${params}`);
-      const data = await res.json();
-      if (data.success) {
-        setVacantes(data.data.data || []);
-        setTotal(data.data.total || 0);
-      }
-    } catch (err) {
-      console.error('Error fetching vacantes:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [debouncedSearch, estado, page]);
+  const { data, isLoading, mutate } = useSWR(key, fetcher, swrConfig);
 
-  useEffect(() => {
-    fetchVacantes();
-  }, [fetchVacantes]);
+  const payload = data?.success ? data.data : undefined;
 
   return {
-    vacantes, total, page, loading,
-    search, setSearch, estado, setEstado,
-    setPage, refetch: fetchVacantes,
+    vacantes: (payload?.data ?? []) as VacanteWithStats[],
+    total: payload?.total ?? 0,
+    page,
+    loading: isLoading,
+    search,
+    setSearch,
+    estado,
+    setEstado,
+    setPage,
+    // refetch/mutate revalidan esta lista al instante (usar tras acciones in-app).
+    refetch: () => mutate(),
+    mutate,
   };
 }
