@@ -1,5 +1,6 @@
 import { pool } from '@/lib/db';
 import { PIPELINE_STATES_CONFIG, PipelineState } from '@/lib/constants/pipeline-states';
+import { cached, invalidate, cacheKeys } from '@/lib/cache';
 
 /**
  * Devuelve el catalogo de estados del pipeline para una organizacion.
@@ -11,38 +12,40 @@ import { PIPELINE_STATES_CONFIG, PipelineState } from '@/lib/constants/pipeline-
  * quitan estados: se devuelven TODOS los del catalogo, ordenados por `orden`.
  */
 export async function getPipelineEstadosConfig(orgId: string): Promise<PipelineState[]> {
-  const result = await pool.query(
-    `SELECT estado_key, label, orden, activo
-     FROM pipeline_estados_config
-     WHERE organization_id = $1`,
-    [orgId]
-  );
+  return cached(cacheKeys.pipelineEstados(orgId), async () => {
+    const result = await pool.query(
+      `SELECT estado_key, label, orden, activo
+       FROM pipeline_estados_config
+       WHERE organization_id = $1`,
+      [orgId]
+    );
 
-  const overrides = new Map<
-    string,
-    { label: string | null; orden: number | null; activo: boolean | null }
-  >();
-  for (const row of result.rows) {
-    overrides.set(row.estado_key, {
-      label: row.label,
-      orden: row.orden,
-      activo: row.activo,
+    const overrides = new Map<
+      string,
+      { label: string | null; orden: number | null; activo: boolean | null }
+    >();
+    for (const row of result.rows) {
+      overrides.set(row.estado_key, {
+        label: row.label,
+        orden: row.orden,
+        activo: row.activo,
+      });
+    }
+
+    const merged: PipelineState[] = PIPELINE_STATES_CONFIG.map((def) => {
+      const ov = overrides.get(def.key);
+      if (!ov) return { ...def };
+      return {
+        ...def,
+        label: ov.label ?? def.label,
+        orden: ov.orden ?? def.orden,
+        activo: ov.activo ?? def.activo ?? true,
+      };
     });
-  }
 
-  const merged: PipelineState[] = PIPELINE_STATES_CONFIG.map((def) => {
-    const ov = overrides.get(def.key);
-    if (!ov) return { ...def };
-    return {
-      ...def,
-      label: ov.label ?? def.label,
-      orden: ov.orden ?? def.orden,
-      activo: ov.activo ?? def.activo ?? true,
-    };
+    merged.sort((a, b) => a.orden - b.orden);
+    return merged;
   });
-
-  merged.sort((a, b) => a.orden - b.orden);
-  return merged;
 }
 
 /**
@@ -75,4 +78,7 @@ export async function updatePipelineEstadosConfig(
       ]
     );
   }
+
+  // Invalida el cache para que la siguiente lectura refleje los overrides.
+  await invalidate(cacheKeys.pipelineEstados(orgId));
 }

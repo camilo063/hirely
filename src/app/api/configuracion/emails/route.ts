@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
+import { cached, invalidate, cacheKeys } from '@/lib/cache';
 
 // GET /api/configuracion/emails — Get email templates + firma admin email
 export const maxDuration = 10;
@@ -11,27 +12,23 @@ export async function GET() {
     await requireAuth();
     const orgId = await getOrgId();
 
-    const result = await pool.query(
-      `SELECT email_seleccion_body, email_rechazo_body, email_onboarding_body, email_firma_admin
-       FROM org_settings WHERE organization_id = $1`,
-      [orgId]
-    );
+    const config = await cached(cacheKeys.emailsConfig(orgId), async () => {
+      const result = await pool.query(
+        `SELECT email_seleccion_body, email_rechazo_body, email_onboarding_body, email_firma_admin
+         FROM org_settings WHERE organization_id = $1`,
+        [orgId]
+      );
 
-    if (result.rows.length === 0) {
-      return apiResponse({
-        email_seleccion_body: '',
-        email_rechazo_body: '',
-        email_onboarding_body: '',
-        email_firma_admin: '',
-      });
-    }
-
-    return apiResponse({
-      email_seleccion_body: result.rows[0].email_seleccion_body || '',
-      email_rechazo_body: result.rows[0].email_rechazo_body || '',
-      email_onboarding_body: result.rows[0].email_onboarding_body || '',
-      email_firma_admin: result.rows[0].email_firma_admin || '',
+      const row = result.rows[0];
+      return {
+        email_seleccion_body: row?.email_seleccion_body || '',
+        email_rechazo_body: row?.email_rechazo_body || '',
+        email_onboarding_body: row?.email_onboarding_body || '',
+        email_firma_admin: row?.email_firma_admin || '',
+      };
     });
+
+    return apiResponse(config);
   } catch (error) {
     return apiError(error);
   }
@@ -77,6 +74,7 @@ export async function PATCH(request: NextRequest) {
       values
     );
 
+    await invalidate(cacheKeys.emailsConfig(orgId));
     return apiResponse({ success: true });
   } catch (error) {
     return apiError(error);

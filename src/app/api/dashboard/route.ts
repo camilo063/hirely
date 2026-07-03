@@ -1,6 +1,7 @@
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { cached, cacheKeys, METRICS_TTL } from '@/lib/cache';
 
 export const maxDuration = 10;
 
@@ -9,6 +10,7 @@ export async function GET() {
     await requireAuth();
     const orgId = await getOrgId();
 
+    const data = await cached(cacheKeys.dashboard(orgId), async () => {
     // Stats + pipeline + recent vacantes + recent activity in parallel
     const [statsResult, pipelineResult, recentVacantesResult, activityResult] = await Promise.all([
       pool.query(
@@ -67,12 +69,15 @@ export async function GET() {
       ),
     ]);
 
-    return apiResponse({
-      stats: statsResult.rows[0],
-      pipeline: pipelineResult.rows,
-      recentVacantes: recentVacantesResult.rows,
-      activity: activityResult.rows,
-    });
+      return {
+        stats: statsResult.rows[0],
+        pipeline: pipelineResult.rows,
+        recentVacantes: recentVacantesResult.rows,
+        activity: activityResult.rows,
+      };
+    }, METRICS_TTL);
+
+    return apiResponse(data);
   } catch (error) {
     return apiError(error);
   }

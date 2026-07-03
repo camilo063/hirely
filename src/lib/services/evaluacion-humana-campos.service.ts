@@ -1,4 +1,5 @@
 import { pool } from '@/lib/db';
+import { cached, invalidate, cacheKeys } from '@/lib/cache';
 
 /**
  * Campo de evaluacion humana configurable por organizacion.
@@ -113,19 +114,21 @@ function mapRow(row: {
  * Si tiene, devuelve solo los activos, ordenados por `orden`.
  */
 export async function getCamposEvaluacion(orgId: string): Promise<Campo[]> {
-  // Siembra los 7 campos por defecto la primera vez, para que aparezcan como
-  // filas reales (con id) editables/reordenables/eliminables, no como texto fijo.
-  await seedCamposSiVacio(orgId);
+  return cached(cacheKeys.evaluacionCampos(orgId), async () => {
+    // Siembra los 7 campos por defecto la primera vez, para que aparezcan como
+    // filas reales (con id) editables/reordenables/eliminables, no como texto fijo.
+    await seedCamposSiVacio(orgId);
 
-  const { rows } = await pool.query(
-    `SELECT id, campo_key, label, descripcion, orden, min_valor, max_valor, activo
-     FROM evaluacion_humana_campos
-     WHERE organization_id = $1
-     ORDER BY orden ASC, created_at ASC`,
-    [orgId]
-  );
+    const { rows } = await pool.query(
+      `SELECT id, campo_key, label, descripcion, orden, min_valor, max_valor, activo
+       FROM evaluacion_humana_campos
+       WHERE organization_id = $1
+       ORDER BY orden ASC, created_at ASC`,
+      [orgId]
+    );
 
-  return rows.filter((r) => r.activo).map(mapRow);
+    return rows.filter((r) => r.activo).map(mapRow);
+  });
 }
 
 /**
@@ -218,6 +221,7 @@ export async function crearCampo(orgId: string, data: CrearCampoInput): Promise<
     ]
   );
 
+  await invalidate(cacheKeys.evaluacionCampos(orgId));
   return mapRow(rows[0]);
 }
 
@@ -272,6 +276,7 @@ export async function actualizarCampo(
     values
   );
 
+  await invalidate(cacheKeys.evaluacionCampos(orgId));
   return rows[0] ? mapRow(rows[0]) : null;
 }
 
@@ -280,6 +285,7 @@ export async function eliminarCampo(orgId: string, campoId: string): Promise<boo
     `DELETE FROM evaluacion_humana_campos WHERE id = $1 AND organization_id = $2`,
     [campoId, orgId]
   );
+  await invalidate(cacheKeys.evaluacionCampos(orgId));
   return (rowCount ?? 0) > 0;
 }
 

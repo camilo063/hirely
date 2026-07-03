@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
+import { cached, invalidate, cacheKeys } from '@/lib/cache';
 
 export const maxDuration = 10;
 
@@ -9,14 +10,17 @@ export async function GET() {
     await requireAuth();
     const organizacionId = await getOrgId();
 
-    const { rows } = await pool.query(
-      `SELECT tipo, inapp_activo, browser_activo, prioridad
-       FROM notificacion_config
-       WHERE organization_id = $1`,
-      [organizacionId]
-    );
+    const config = await cached(cacheKeys.notificacionConfig(organizacionId), async () => {
+      const { rows } = await pool.query(
+        `SELECT tipo, inapp_activo, browser_activo, prioridad
+         FROM notificacion_config
+         WHERE organization_id = $1`,
+        [organizacionId]
+      );
+      return rows;
+    });
 
-    return NextResponse.json({ config: rows });
+    return NextResponse.json({ config });
   } catch (error) {
     console.error('[GET /api/notificaciones/config]', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
@@ -48,6 +52,7 @@ export async function PUT(request: NextRequest) {
         [organizacionId, item.tipo, item.inapp_activo, item.browser_activo, item.prioridad]
       );
     }
+    await invalidate(cacheKeys.notificacionConfig(organizacionId));
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('[PUT /api/notificaciones/config]', error);
