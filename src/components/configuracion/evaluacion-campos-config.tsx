@@ -4,9 +4,10 @@ import { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleCard } from '@/components/ui/collapsible-card';
 import { toast } from 'sonner';
 import { Plus, Trash2, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface Campo {
   id?: string;
@@ -24,6 +25,16 @@ export function EvaluacionCamposConfig() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+
+  const rowKey = (c: Campo) => c.id || c.campo_key;
+  const toggleOpen = (id: string) =>
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const fetchCampos = useCallback(async () => {
     try {
@@ -143,131 +154,161 @@ export function EvaluacionCamposConfig() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Campos de evaluación humana</CardTitle>
-        <CardDescription>
-          Define los criterios que el evaluador califica (de 1 a 5, con decimales)
-          cuando un candidato pasa a &quot;A evaluar&quot;.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {loading ? (
-          <div className="flex items-center gap-2 py-8 justify-center text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Cargando...
-          </div>
-        ) : campos.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground text-sm">
-            No hay campos de evaluación configurados
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {campos.map((campo, idx) => (
-              <div
-                key={campo.id || campo.campo_key}
-                className="flex items-start gap-2 p-3 border rounded-lg"
-              >
-                <div className="flex flex-col shrink-0 pt-3.5">
+    <CollapsibleCard
+      title="Campos de evaluación humana"
+      description='Define los criterios que el evaluador califica (de 1 a 5, con decimales) cuando un candidato pasa a "A evaluar".'
+      aside={
+        !loading ? (
+          <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+            {campos.length} criterios
+          </span>
+        ) : null
+      }
+    >
+      {loading ? (
+        <div className="flex items-center gap-2 py-8 justify-center text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Cargando...
+        </div>
+      ) : campos.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground text-sm">
+          No hay campos de evaluación configurados
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {campos.map((campo, idx) => {
+            const id = rowKey(campo);
+            const open = openIds.has(id);
+            return (
+              <div key={id} className="rounded-lg border">
+                {/* Header: reordenar + toggle (nombre + rango) + eliminar */}
+                <div className="flex items-center gap-2 p-2.5">
+                  <div className="flex flex-col shrink-0">
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      title="Subir"
+                      disabled={idx === 0}
+                      onClick={() => handleMove(idx, 'up')}
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      title="Bajar"
+                      disabled={idx === campos.length - 1}
+                      onClick={() => handleMove(idx, 'down')}
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </button>
+                  </div>
+
                   <button
                     type="button"
-                    className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    title="Subir"
-                    disabled={idx === 0}
-                    onClick={() => handleMove(idx, 'up')}
+                    onClick={() => toggleOpen(id)}
+                    aria-expanded={open}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
                   >
-                    <ChevronUp className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    title="Bajar"
-                    disabled={idx === campos.length - 1}
-                    onClick={() => handleMove(idx, 'down')}
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="flex-1 min-w-0 space-y-2">
-                  <div>
-                    <Label htmlFor={`label_${idx}`} className="text-xs text-muted-foreground">
-                      Nombre del criterio
-                    </Label>
-                    <Input
-                      id={`label_${idx}`}
-                      value={campo.label}
-                      onChange={(e) => updateLocal(idx, { label: e.target.value })}
-                      onBlur={() => handleSave(campo)}
-                      placeholder="Ej: Actitud"
+                    <ChevronDown
+                      className={cn(
+                        'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
+                        open && 'rotate-180'
+                      )}
                     />
-                  </div>
-                  <div>
-                    <Label htmlFor={`desc_${idx}`} className="text-xs text-muted-foreground">
-                      Descripción
-                    </Label>
-                    <Input
-                      id={`desc_${idx}`}
-                      value={campo.descripcion ?? ''}
-                      onChange={(e) => updateLocal(idx, { descripcion: e.target.value })}
-                      onBlur={() => handleSave(campo)}
-                      placeholder="Descripción breve (opcional)"
-                    />
-                  </div>
-                  <div className="flex items-end gap-2">
-                    <div className="w-24">
-                      <Label htmlFor={`min_${idx}`} className="text-xs text-muted-foreground">
-                        Mínimo
-                      </Label>
-                      <Input
-                        id={`min_${idx}`}
-                        type="number"
-                        step={0.1}
-                        value={campo.min_valor}
-                        onChange={(e) => updateLocal(idx, { min_valor: Number(e.target.value) })}
-                        onBlur={() => handleSave(campo)}
-                      />
-                    </div>
-                    <div className="w-24">
-                      <Label htmlFor={`max_${idx}`} className="text-xs text-muted-foreground">
-                        Máximo
-                      </Label>
-                      <Input
-                        id={`max_${idx}`}
-                        type="number"
-                        step={0.1}
-                        value={campo.max_valor}
-                        onChange={(e) => updateLocal(idx, { max_valor: Number(e.target.value) })}
-                        onBlur={() => handleSave(campo)}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground pb-2.5">
-                      Escala de calificación del criterio (ej. 1 a 5, o 1 a 6).
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 shrink-0 pt-5">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                      {campo.label || 'Sin nombre'}
+                    </span>
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                      {campo.min_valor}–{campo.max_valor}
+                    </span>
+                  </button>
+
                   {savingId === campo.id && (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
                   )}
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-8 w-8 p-0 text-destructive"
+                    className="h-8 w-8 shrink-0 p-0 text-destructive"
                     title="Eliminar campo"
                     onClick={() => handleDelete(campo)}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
 
+                {/* Body: detalle editable (solo cuando esta expandido) */}
+                {open && (
+                  <div className="space-y-2 border-t p-3">
+                    <div>
+                      <Label htmlFor={`label_${idx}`} className="text-xs text-muted-foreground">
+                        Nombre del criterio
+                      </Label>
+                      <Input
+                        id={`label_${idx}`}
+                        value={campo.label}
+                        onChange={(e) => updateLocal(idx, { label: e.target.value })}
+                        onBlur={() => handleSave(campo)}
+                        placeholder="Ej: Actitud"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`desc_${idx}`} className="text-xs text-muted-foreground">
+                        Descripción
+                      </Label>
+                      <Input
+                        id={`desc_${idx}`}
+                        value={campo.descripcion ?? ''}
+                        onChange={(e) => updateLocal(idx, { descripcion: e.target.value })}
+                        onBlur={() => handleSave(campo)}
+                        placeholder="Descripción breve (opcional)"
+                      />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <div className="w-24">
+                        <Label htmlFor={`min_${idx}`} className="text-xs text-muted-foreground">
+                          Mínimo
+                        </Label>
+                        <Input
+                          id={`min_${idx}`}
+                          type="number"
+                          step={0.1}
+                          value={campo.min_valor}
+                          onChange={(e) => updateLocal(idx, { min_valor: Number(e.target.value) })}
+                          onBlur={() => handleSave(campo)}
+                        />
+                      </div>
+                      <div className="w-24">
+                        <Label htmlFor={`max_${idx}`} className="text-xs text-muted-foreground">
+                          Máximo
+                        </Label>
+                        <Input
+                          id={`max_${idx}`}
+                          type="number"
+                          step={0.1}
+                          value={campo.max_valor}
+                          onChange={(e) => updateLocal(idx, { max_valor: Number(e.target.value) })}
+                          onBlur={() => handleSave(campo)}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground pb-2.5">
+                        Escala de calificación del criterio (ej. 1 a 5, o 1 a 6).
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="pt-3">
         <Button variant="outline" size="sm" onClick={handleAdd} disabled={adding} className="gap-1.5">
           {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           Agregar campo
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleCard>
   );
 }
