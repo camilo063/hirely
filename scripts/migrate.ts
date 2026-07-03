@@ -3,6 +3,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 async function migrate() {
+  // En Vercel (build/deploy) DATABASE_URL es obligatoria: si falta, fallar con
+  // un mensaje claro en vez de caer al localhost de dev (que produce un
+  // ECONNREFUSED confuso y oculta que la env var no llego al build).
+  if (process.env.VERCEL && !process.env.DATABASE_URL) {
+    throw new Error(
+      'DATABASE_URL no esta definida en este build de Vercel. Revisa que la env var ' +
+      'este asignada al entorno (Production/Preview) del deploy.'
+    );
+  }
+
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL || 'postgresql://hirely_user:hirely_dev_2026@localhost:5434/hirely',
   });
