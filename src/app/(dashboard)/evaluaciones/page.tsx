@@ -102,9 +102,15 @@ function EnvioMasivoDialog({
       .then(data => {
         if (data.success) {
           setPlantillas((data.data || []).filter((p: Plantilla) => p.estado === 'activa'));
+        } else {
+          console.error('[Plantillas] Error del servidor:', data.error);
+          toast.error(data.error || 'Error cargando plantillas');
         }
       })
-      .catch(() => toast.error('Error cargando plantillas'));
+      .catch((error) => {
+        console.error('[Plantillas] Error de red o respuesta invalida:', error);
+        toast.error('Error cargando plantillas. Revisa tu conexion o intenta de nuevo.');
+      });
   }, [open]);
 
   // Fetch candidatos when vacante changes
