@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
+import { uuidValido } from '@/lib/services/reportes.service';
 
 export const maxDuration = 10;
 
@@ -10,7 +11,8 @@ export async function GET(request: NextRequest) {
     const orgId = await getOrgId();
     const { searchParams } = new URL(request.url);
 
-    const vacanteId = searchParams.get('vacante_id') || null;
+    // Un UUID mal formado hacia reventar la consulta con 500.
+    const vacanteId = uuidValido(searchParams.get('vacante_id'));
     const nivelRiesgo = searchParams.get('nivel_riesgo') || null;
     const desde = searchParams.get('desde') || null;
     const hasta = searchParams.get('hasta') || null;

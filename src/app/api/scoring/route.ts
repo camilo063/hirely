@@ -4,6 +4,7 @@ import { rescoreAllCandidatos } from '@/lib/services/scoring-pipeline.service';
 import { calculateScoreDual, batchCalculateScoreDual } from '@/lib/services/scoring-dual.service';
 import { batchScoreVacante } from '@/lib/services/scoring-ats.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 /**
  * POST /api/scoring
@@ -20,6 +21,8 @@ export const maxDuration = 300;
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const body = await request.json();
     const { tipo, aplicacion_id, vacante_id, force } = body;

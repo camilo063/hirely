@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { CheckCircle, Mail, Clock, Ban, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { sanitizarHtml } from '@/lib/utils/sanitize-html';
 import {
   PLANTILLA_BIENVENIDA_DEFAULT,
   VARIABLES_DISPONIBLES,
@@ -212,7 +213,7 @@ export function ContratarModal({
           {showPreview && (
             <div
               className="border rounded-md p-4 max-h-60 overflow-y-auto bg-white text-sm"
-              dangerouslySetInnerHTML={{ __html: previewHtml }}
+              dangerouslySetInnerHTML={{ __html: sanitizarHtml(previewHtml) }}
             />
           )}
 

@@ -12,40 +12,63 @@ import { cached, invalidate, cacheKeys } from '@/lib/cache';
  * quitan estados: se devuelven TODOS los del catalogo, ordenados por `orden`.
  */
 export async function getPipelineEstadosConfig(orgId: string): Promise<PipelineState[]> {
-  return cached(cacheKeys.pipelineEstados(orgId), async () => {
-    const result = await pool.query(
-      `SELECT estado_key, label, orden, activo
-       FROM pipeline_estados_config
-       WHERE organization_id = $1`,
-      [orgId]
-    );
+  return cached(cacheKeys.pipelineEstados(orgId), () => leerEstadosConfig(orgId, pool));
+}
 
-    const overrides = new Map<
-      string,
-      { label: string | null; orden: number | null; activo: boolean | null }
-    >();
-    for (const row of result.rows) {
-      overrides.set(row.estado_key, {
-        label: row.label,
-        orden: row.orden,
-        activo: row.activo,
-      });
-    }
+/**
+ * Igual que `getPipelineEstadosConfig` pero ejecutando sobre un cliente dado y
+ * SIN pasar por el cache.
+ *
+ * Existe para los llamadores que estan dentro de una transaccion: si usaran la
+ * version cacheada, un fallo de cache dispararia un `pool.query` que pide una
+ * SEGUNDA conexion mientras la primera sigue ocupada por el BEGIN. Con
+ * suficiente concurrencia todas las conexiones del pool quedan tomadas por
+ * transacciones esperando una conexion mas — deadlock hasta el
+ * connectionTimeoutMillis. Reutilizar el mismo cliente lo hace imposible.
+ */
+export async function getPipelineEstadosConfigCon(
+  orgId: string,
+  runner: { query: typeof pool.query }
+): Promise<PipelineState[]> {
+  return leerEstadosConfig(orgId, runner);
+}
 
-    const merged: PipelineState[] = PIPELINE_STATES_CONFIG.map((def) => {
-      const ov = overrides.get(def.key);
-      if (!ov) return { ...def };
-      return {
-        ...def,
-        label: ov.label ?? def.label,
-        orden: ov.orden ?? def.orden,
-        activo: ov.activo ?? def.activo ?? true,
-      };
+async function leerEstadosConfig(
+  orgId: string,
+  runner: { query: typeof pool.query }
+): Promise<PipelineState[]> {
+  const result = await runner.query(
+    `SELECT estado_key, label, orden, activo
+     FROM pipeline_estados_config
+     WHERE organization_id = $1`,
+    [orgId]
+  );
+
+  const overrides = new Map<
+    string,
+    { label: string | null; orden: number | null; activo: boolean | null }
+  >();
+  for (const row of result.rows) {
+    overrides.set(row.estado_key, {
+      label: row.label,
+      orden: row.orden,
+      activo: row.activo,
     });
+  }
 
-    merged.sort((a, b) => a.orden - b.orden);
-    return merged;
+  const merged: PipelineState[] = PIPELINE_STATES_CONFIG.map((def) => {
+    const ov = overrides.get(def.key);
+    if (!ov) return { ...def };
+    return {
+      ...def,
+      label: ov.label ?? def.label,
+      orden: ov.orden ?? def.orden,
+      activo: ov.activo ?? def.activo ?? true,
+    };
   });
+
+  merged.sort((a, b) => a.orden - b.orden);
+  return merged;
 }
 
 /**

@@ -147,13 +147,19 @@ export function extractS3Key(rawRef: string): string {
 export async function getPresignedUploadUrl(
   key: string,
   contentType: string,
-  expiresInSeconds: number = 900
+  expiresInSeconds: number = 900,
+  contentLength?: number
 ): Promise<string> {
   const client = getClient();
   const command = new PutObjectCommand({
     Bucket: BUCKET_NAME,
     Key: key,
     ContentType: contentType,
+    // Firmar el tamaño ata la URL a ese peso exacto: S3 rechaza cualquier PUT
+    // que no lo cumpla. Sin esto, el limite de 10 MB era solo una declaracion
+    // del cliente — la URL presignada (emitida desde un endpoint publico y
+    // valida 15 minutos) aceptaba una subida de cualquier tamaño.
+    ...(contentLength ? { ContentLength: contentLength } : {}),
   });
   return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
 }

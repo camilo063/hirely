@@ -55,6 +55,7 @@ const STATE_BADGE_COLORS: Record<string, string> = {
   revisado: 'bg-blue-100 text-blue-700 border-blue-300',
   preseleccionado: 'bg-violet-100 text-violet-700 border-violet-300',
   entrevista_ia: 'bg-amber-100 text-amber-700 border-amber-300',
+  prueba_tecnica: 'bg-cyan-100 text-cyan-700 border-cyan-300',
   evaluado: 'bg-teal-100 text-teal-700 border-teal-300',
   entrevista_humana: 'bg-pink-100 text-pink-700 border-pink-300',
   seleccionado: 'bg-emerald-100 text-emerald-700 border-emerald-300',
@@ -89,6 +90,7 @@ export function SelectorEstadoAplicacion({
     estado: string;
     title: string;
     description: string;
+    forzarAuto?: boolean;
   }>({ open: false, estado: '', title: '', description: '' });
 
   // Catalogo de estados de la organizacion (nombres/orden/activo configurables)
@@ -96,7 +98,18 @@ export function SelectorEstadoAplicacion({
   const currentState = estados.find((s) => s.key === estadoActual) || PIPELINE_STATES_MAP.get(estadoActual);
   const transiciones = getTransicionesPermitidas(estadoActual, estadosCompletados, { estados });
 
-  async function cambiarEstado(nuevoEstado: string, motivoDescarte?: string) {
+  // Un estado automatico solo es forzable si lo UNICO que lo bloquea es el
+  // automatismo. `getTransicionesPermitidas` evalua `automatico` antes que los
+  // prerequisitos, asi que sin este segundo calculo se ofrecia "Forzar" en
+  // estados cuyos prerequisitos ni siquiera se cumplen y el backend respondia
+  // 422. Repetir el calculo con allowAuto revela el bloqueo real.
+  const forzables = new Set(
+    getTransicionesPermitidas(estadoActual, estadosCompletados, { estados, allowAuto: true })
+      .filter((t) => t.permitida)
+      .map((t) => t.state.key)
+  );
+
+  async function cambiarEstado(nuevoEstado: string, motivoDescarte?: string, forzarAuto?: boolean) {
     setLoading(true);
     try {
       const res = await fetch(`/api/aplicaciones/${aplicacionId}/estado`, {
@@ -105,6 +118,7 @@ export function SelectorEstadoAplicacion({
         body: JSON.stringify({
           estado: nuevoEstado,
           ...(motivoDescarte ? { motivo_descarte: motivoDescarte } : {}),
+          ...(forzarAuto ? { forzar_auto: true } : {}),
         }),
       });
       const data = await res.json();
@@ -140,9 +154,26 @@ export function SelectorEstadoAplicacion({
   }
 
   function handleClick(transicion: TransicionInfo) {
-    if (!transicion.permitida) return;
-
     const key = transicion.state.key;
+
+    // Estado automatico que no disparo solo: se ofrece forzarlo a mano, con
+    // confirmacion explicita. El backend valida los prerequisitos igual.
+    if (!transicion.permitida && transicion.state.automatico && forzables.has(key)) {
+      const estadoLabel = transicion.state.label;
+      setOpen(false);
+      setConfirmDialog({
+        open: true,
+        estado: key,
+        forzarAuto: true,
+        title: `Avanzar a "${estadoLabel}" manualmente`,
+        description:
+          `"${estadoLabel}" normalmente se asigna solo. Si el proceso ya se cumplio ` +
+          `pero el estado no avanzo, puedes marcarlo a mano para desbloquear a ${candidatoNombre}.`,
+      });
+      return;
+    }
+
+    if (!transicion.permitida) return;
 
     if (key === 'seleccionado') {
       setOpen(false);
@@ -192,7 +223,7 @@ export function SelectorEstadoAplicacion({
   }
 
   function handleConfirm() {
-    cambiarEstado(confirmDialog.estado);
+    cambiarEstado(confirmDialog.estado, undefined, confirmDialog.forzarAuto);
     setConfirmDialog((prev) => ({ ...prev, open: false }));
   }
 
@@ -241,6 +272,7 @@ export function SelectorEstadoAplicacion({
                       isCurrent={isCurrent}
                       isAutomatic={!!isAutomatic}
                       isBlocked={isBlocked}
+                      isForzable={forzables.has(t.state.key)}
                       isCompact={isCompact}
                       onClick={() => handleClick(t)}
                     />
@@ -255,6 +287,7 @@ export function SelectorEstadoAplicacion({
                   isCurrent={isCurrent}
                   isAutomatic={!!isAutomatic}
                   isBlocked={isBlocked}
+                  isForzable={forzables.has(t.state.key)}
                   isCompact={isCompact}
                   onClick={() => handleClick(t)}
                 />
@@ -327,6 +360,7 @@ function StateRow({
   isCurrent,
   isAutomatic,
   isBlocked,
+  isForzable,
   isCompact,
   onClick,
 }: {
@@ -334,25 +368,33 @@ function StateRow({
   isCurrent: boolean;
   isAutomatic: boolean;
   isBlocked: boolean;
+  isForzable: boolean;
   isCompact: boolean;
   onClick: () => void;
 }) {
   const { state, permitida, razon, completado } = transicion;
   const isDescartado = state.key === 'descartado';
 
+  // Los estados automaticos se pueden forzar a mano. Antes quedaban muertos en
+  // el menu ("este estado se asigna automaticamente") y, cuando el automatismo
+  // no disparaba, el reclutador se quedaba sin manera de avanzar el pipeline.
+  // El backend sigue validando los prerequisitos, asi que forzar no salta pasos.
+  const forzable = isAutomatic && !isCurrent && !permitida && isForzable;
+  const clickable = permitida || forzable;
+
   const content = (
     <button
       onClick={(e) => {
         e.stopPropagation();
-        if (permitida) onClick();
+        if (clickable) onClick();
       }}
-      disabled={!permitida}
+      disabled={!clickable}
       className={cn(
         'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-xs transition-colors',
         isCurrent && 'bg-accent font-semibold cursor-default',
-        permitida && !isCurrent && 'hover:bg-accent cursor-pointer',
+        clickable && !isCurrent && 'hover:bg-accent cursor-pointer',
         isBlocked && 'opacity-50 cursor-not-allowed',
-        isAutomatic && !isCurrent && 'opacity-60 cursor-not-allowed',
+        forzable && 'opacity-80',
         isDescartado && permitida && 'text-red-600 hover:bg-red-50'
       )}
     >
@@ -376,8 +418,13 @@ function StateRow({
 
       {/* Right chips */}
       {isAutomatic && !isCurrent && (
-        <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium shrink-0">
-          Auto
+        <span
+          className={cn(
+            'text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0',
+            forzable ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
+          )}
+        >
+          {forzable ? 'Forzar' : 'Auto'}
         </span>
       )}
     </button>

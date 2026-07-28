@@ -39,6 +39,11 @@ export const PIPELINE_STATES_CONFIG: PipelineState[] = [
     prerequisitos: ['nuevo'],
     descripcion: 'Candidato siendo revisado por el equipo',
   },
+  // NOTA: 'revisado' aparece en `EstadoAplicacion` y en el funnel de reportes,
+  // pero NO forma parte de esta cadena a proposito. Ningun codigo lo asigna
+  // (solo se tolera como origen en algunos `soloDesde`), y meterlo aqui haria
+  // que 'preseleccionado' lo exigiera como prerequisito lineal, rompiendo el
+  // camino real 'en_revision' -> 'preseleccionado' que si usa el producto.
   {
     key: 'preseleccionado',
     label: 'Preseleccionado',
@@ -47,27 +52,41 @@ export const PIPELINE_STATES_CONFIG: PipelineState[] = [
     prerequisitos: ['en_revision'],
     descripcion: 'Candidato pasa filtro inicial y es preseleccionado',
   },
+  // 'entrevista_ia' y 'prueba_tecnica' son dos etapas distintas a proposito:
+  // la primera es la llamada telefonica automatizada con Dapta
+  // (entrevista-ia.service.ts), la segunda es la prueba escrita del modulo de
+  // Evaluaciones Tecnicas (evaluacion-tecnica.service.ts). Antes de la
+  // migracion 038 ambos modulos escribian el mismo estado 'entrevista_ia',
+  // ocultando cual de los dos completo el candidato.
   {
     key: 'entrevista_ia',
-    label: 'Prueba técnica',
+    label: 'Entrevista IA',
     color: 'bg-amber-500',
     orden: 4,
     prerequisitos: ['preseleccionado'],
+    descripcion: 'Candidato en entrevista telefonica automatizada (Dapta)',
+  },
+  {
+    key: 'prueba_tecnica',
+    label: 'Prueba técnica',
+    color: 'bg-cyan-500',
+    orden: 5,
+    prerequisitos: ['entrevista_ia'],
     descripcion: 'Candidato en etapa de prueba técnica (módulo de Evaluaciones Técnicas)',
   },
   {
     key: 'entrevista_humana',
     label: 'Entrevista humana',
     color: 'bg-pink-500',
-    orden: 5,
-    prerequisitos: ['entrevista_ia'],
+    orden: 6,
+    prerequisitos: ['prueba_tecnica'],
     descripcion: 'Candidato en entrevista con el equipo',
   },
   {
     key: 'evaluado',
     label: 'A evaluar',
     color: 'bg-teal-500',
-    orden: 6,
+    orden: 7,
     prerequisitos: ['entrevista_humana'],
     descripcion: 'Pendiente de registrar la evaluación humana (actitud, liderazgo, etc.)',
   },
@@ -75,7 +94,7 @@ export const PIPELINE_STATES_CONFIG: PipelineState[] = [
     key: 'seleccionado',
     label: 'Seleccionado',
     color: 'bg-emerald-500',
-    orden: 7,
+    orden: 8,
     prerequisitos: ['entrevista_humana'],
     descripcion: 'Candidato seleccionado para la posicion',
   },
@@ -83,7 +102,7 @@ export const PIPELINE_STATES_CONFIG: PipelineState[] = [
     key: 'documentos_pendientes',
     label: 'Documentos pendientes',
     color: 'bg-orange-500',
-    orden: 8,
+    orden: 9,
     prerequisitos: ['seleccionado'],
     descripcion: 'Esperando documentos del candidato',
     automatico: true,
@@ -92,7 +111,7 @@ export const PIPELINE_STATES_CONFIG: PipelineState[] = [
     key: 'documentos_completos',
     label: 'Documentos completos',
     color: 'bg-lime-500',
-    orden: 9,
+    orden: 10,
     prerequisitos: ['documentos_pendientes'],
     descripcion: 'Todos los documentos fueron recibidos y verificados',
     automatico: true,
@@ -101,7 +120,7 @@ export const PIPELINE_STATES_CONFIG: PipelineState[] = [
     key: 'contratado',
     label: 'Contratado',
     color: 'bg-green-600',
-    orden: 10,
+    orden: 11,
     prerequisitos: ['documentos_completos'],
     descripcion: 'Candidato contratado oficialmente',
   },
@@ -109,7 +128,7 @@ export const PIPELINE_STATES_CONFIG: PipelineState[] = [
     key: 'contrato_terminado',
     label: 'Contrato terminado',
     color: 'bg-slate-500',
-    orden: 11,
+    orden: 12,
     prerequisitos: ['contratado'],
     descripcion: 'La relacion laboral ha finalizado',
   },
@@ -129,6 +148,23 @@ export const PIPELINE_STATES_CONFIG: PipelineState[] = [
 export const PIPELINE_STATES_MAP = new Map(
   PIPELINE_STATES_CONFIG.map((s) => [s.key, s])
 );
+
+/** Estados finales: no tiene sentido marcar estancamiento en ellos. */
+export const ESTADOS_TERMINALES = ['contratado', 'contrato_terminado', 'descartado'];
+
+/** Umbral fijo (dias) a partir del cual una aplicacion se considera estancada en su estado actual. */
+export const UMBRAL_ESTANCAMIENTO_DIAS = 5;
+
+/**
+ * Dias transcurridos desde que la aplicacion entro a su estado actual.
+ * `null` si no hay marca de tiempo (filas previas a la migracion 037 sin backfill,
+ * o dato aun no disponible).
+ */
+export function diasEnEstadoActual(estadoUpdatedAt: string | null): number | null {
+  if (!estadoUpdatedAt) return null;
+  const ms = Date.now() - new Date(estadoUpdatedAt).getTime();
+  return Math.floor(ms / (24 * 60 * 60 * 1000));
+}
 
 /**
  * Returns all possible transitions from the current state,

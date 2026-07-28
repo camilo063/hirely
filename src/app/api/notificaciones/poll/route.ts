@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
+import { apiError } from '@/lib/utils/api-response';
 
 export const maxDuration = 10;
 
@@ -51,6 +52,8 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error('[GET /api/notificaciones/poll]', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+    // `apiError` traduce UnauthorizedError -> 401. Con el 500 fijo, el cliente
+    // no distinguia 'sesion caducada' de 'roto' y no relanzaba el login.
+    return apiError(error);
   }
 }

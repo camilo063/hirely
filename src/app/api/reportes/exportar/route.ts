@@ -7,6 +7,7 @@ import {
 } from '@/lib/services/reportes.service';
 import { apiError } from '@/lib/utils/api-response';
 import type { FiltrosReporte } from '@/lib/types/reportes.types';
+import { uuidValido } from '@/lib/services/reportes.service';
 
 export const maxDuration = 60;
 
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const filtros: FiltrosReporte = {
-      vacanteId: searchParams.get('vacanteId') || undefined,
+      vacanteId: uuidValido(searchParams.get('vacanteId')) || undefined,
       desde: searchParams.get('desde') || undefined,
       hasta: searchParams.get('hasta') || undefined,
       periodo: (searchParams.get('periodo') as FiltrosReporte['periodo']) || undefined,

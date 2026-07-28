@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server';
 import { pool } from '@/lib/db';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
+import { transicionarEstado } from '@/lib/services/pipeline-transicion.service';
+import { verificarFirmaHmac, extraerFirma } from '@/lib/integrations/webhook-signature';
+import { escaparHtml } from '@/lib/utils/sanitize-html';
 
 /**
  * Webhook receiver for firma providers (SignWell, DocuSign, etc.)
@@ -12,8 +15,22 @@ export const maxDuration = 30;
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    console.log('[Webhook Firma] Received:', JSON.stringify(body).substring(0, 500));
+    // El cuerpo se lee CRUDO: la firma HMAC se calcula sobre el texto exacto que
+    // envio el proveedor. Re-serializar el JSON cambiaria los bytes y la firma
+    // dejaria de cuadrar.
+    const rawBody = await request.text();
+    const verificacion = verificarFirmaHmac(
+      rawBody,
+      extraerFirma(request.headers),
+      process.env.SIGNWELL_WEBHOOK_SECRET
+    );
+    if (!verificacion.valido) {
+      console.warn('[Webhook Firma] Rechazado:', verificacion.motivo);
+      return Response.json({ received: true, processed: false }, { status: 401 });
+    }
+
+    const body = JSON.parse(rawBody);
+    console.log('[Webhook Firma] Received:', rawBody.substring(0, 500));
 
     // Determine event type and external ID from different providers
     let externalId: string | null = null;
@@ -276,12 +293,15 @@ async function prepararOnboarding(
   if (appResult.rows.length === 0) return;
   const app = appResult.rows[0];
 
-  // Update estado to 'contratado' if currently 'seleccionado'
-  if (app.estado === 'seleccionado') {
-    await pool.query(
-      `UPDATE aplicaciones SET estado = 'contratado', updated_at = NOW() WHERE id = $1`,
-      [aplicacionId]
-    );
+  // La firma cierra la contratacion desde cualquier punto posterior a la
+  // seleccion. Antes solo contemplaba 'seleccionado', asi que si el candidato
+  // ya habia pasado por el portal de documentos la firma no avanzaba nada.
+  const ESTADOS_PREVIOS_A_CONTRATAR = ['seleccionado', 'documentos_pendientes', 'documentos_completos'];
+  if (ESTADOS_PREVIOS_A_CONTRATAR.includes(app.estado)) {
+    await transicionarEstado(aplicacionId, 'contratado', {
+      soloDesde: ESTADOS_PREVIOS_A_CONTRATAR,
+      orgId,
+    });
 
     await pool.query(
       `INSERT INTO activity_log (organization_id, entity_type, entity_id, action, details)
@@ -314,7 +334,7 @@ async function prepararOnboarding(
     const adminEmails = adminResult.rows.map((r: { email: string }) => r.email);
 
     if (adminEmails.length > 0) {
-      await enviarEmail({
+      const resultadoEnvio = await enviarEmail({
         to: adminEmails,
         subject: `Listo para onboarding — ${candidatoNombre} | ${app.vacante_titulo}`,
         html: `
@@ -325,8 +345,8 @@ async function prepararOnboarding(
             <div style="background: white; padding: 32px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
               <h2 style="color: #0A1F3F; margin-top: 0; font-size: 20px;">Onboarding pendiente</h2>
               <p style="color: #374151; line-height: 1.7; font-size: 15px;">
-                El contrato de <strong>${candidatoNombre}</strong> para la posicion de
-                <strong>${app.vacante_titulo}</strong> ha sido firmado.
+                El contrato de <strong>${escaparHtml(candidatoNombre)}</strong> para la posicion de
+                <strong>${escaparHtml(app.vacante_titulo)}</strong> ha sido firmado.
               </p>
               <p style="color: #374151; line-height: 1.7; font-size: 15px;">
                 El candidato esta listo para iniciar su proceso de onboarding. Por favor ingresa al
@@ -345,7 +365,11 @@ async function prepararOnboarding(
           </div>
         `,
       });
-      console.log(`[Webhook Firma] Email onboarding pendiente enviado a admins`);
+      if (resultadoEnvio.success) {
+        console.log(`[Webhook Firma] Email onboarding pendiente enviado a admins`);
+      } else {
+        console.error(`[Webhook Firma] Email onboarding pendiente NO enviado:`, resultadoEnvio.error);
+      }
     }
   } catch (err) {
     console.error('[Webhook Firma] Error notificando onboarding pendiente:', err);

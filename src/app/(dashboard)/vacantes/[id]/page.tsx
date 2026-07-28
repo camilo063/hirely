@@ -14,6 +14,8 @@ import { LinkedInPublishButton } from '@/components/vacantes/linkedin-publish-bu
 import { CompartirVacante } from '@/components/vacantes/compartir-vacante';
 import { VacancyStatusSelector } from '@/components/vacantes/vacancy-status-selector';
 import { PipelineCompleto } from '@/components/candidatos/pipeline-completo';
+import { SiguientePasoSugerido } from '@/components/vacantes/SiguientePasoSugerido';
+import { VacanteFunnel } from '@/components/vacantes/vacante-funnel';
 import { VacanteWithStats } from '@/lib/types/vacante.types';
 import type { VacancyEstado } from '@/lib/services/vacancy-state-machine';
 import { toast } from 'sonner';
@@ -235,6 +237,8 @@ export default function VacanteDetailPage() {
         </TabsContent>
 
         <TabsContent value="candidatos">
+          <SiguientePasoSugerido vacanteId={params.id as string} />
+          <VacanteFunnel vacanteId={params.id as string} />
           <PipelineCompleto
             vacanteId={params.id as string}
             vacanteTitulo={vacante.titulo}

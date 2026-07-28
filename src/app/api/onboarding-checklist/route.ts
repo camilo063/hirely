@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
+import { apiError } from '@/lib/utils/api-response';
 
 interface ChecklistPaso {
   id: string;
@@ -89,7 +90,8 @@ export async function GET() {
     return NextResponse.json({ pasos, todoCompleto, dismissed: false });
   } catch (error) {
     console.error('[GET /api/onboarding-checklist]', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+    // `apiError` traduce 401/403/404; el 500 fijo los enmascaraba.
+    return apiError(error);
   }
 }
 
@@ -114,6 +116,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('[POST /api/onboarding-checklist]', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+    // `apiError` traduce 401/403/404; el 500 fijo los enmascaraba.
+    return apiError(error);
   }
 }

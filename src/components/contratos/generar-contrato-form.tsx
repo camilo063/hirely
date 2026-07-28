@@ -17,6 +17,7 @@ import {
 } from '@/lib/types/contrato.types';
 import { renderPlantillaContrato, PLANTILLAS_CONTRATO_DEFAULT } from '@/lib/utils/plantillas-contrato-default';
 import { useTiposContrato } from '@/hooks/useTiposContrato';
+import { sanitizarHtml } from '@/lib/utils/sanitize-html';
 
 interface Props {
   aplicacionId: string;
@@ -230,7 +231,7 @@ export function GenerarContratoForm({
             <CardContent className="pt-4">
               <div
                 className="border rounded-lg p-6 bg-white min-h-[400px] text-sm"
-                dangerouslySetInnerHTML={{ __html: getPreviewHtml() }}
+                dangerouslySetInnerHTML={{ __html: sanitizarHtml(getPreviewHtml()) }}
               />
             </CardContent>
           </Card>

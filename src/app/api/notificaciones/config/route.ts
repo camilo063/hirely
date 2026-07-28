@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
 import { cached, invalidate, cacheKeys } from '@/lib/cache';
+import { requireAdmin } from '@/lib/auth/authorization';
+import { apiError } from '@/lib/utils/api-response';
 
 export const maxDuration = 10;
 
@@ -23,13 +25,17 @@ export async function GET() {
     return NextResponse.json({ config });
   } catch (error) {
     console.error('[GET /api/notificaciones/config]', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+    // `apiError` traduce UnauthorizedError -> 401 y ForbiddenError -> 403.
+    // Con el 500 fijo, el cliente no podia distinguir 'sin permiso' de 'roto'.
+    return apiError(error);
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
     await requireAuth();
+    // Solo administradores: esta ruta cambia configuracion de toda la empresa.
+    await requireAdmin();
     const organizacionId = await getOrgId();
 
     const body = await request.json();
@@ -56,6 +62,9 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('[PUT /api/notificaciones/config]', error);
-    return NextResponse.json({ error: 'Error guardando config' }, { status: 500 });
+    // `apiError` traduce ForbiddenError -> 403 y UnauthorizedError -> 401. Con el
+    // 500 fijo, un recruiter o un anonimo recibian "error interno" en vez de
+    // "no tienes permiso", y el cliente no podia reaccionar.
+    return apiError(error);
   }
 }

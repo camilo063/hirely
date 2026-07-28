@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { pool } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { z } from 'zod';
+import { hashPassword } from '@/lib/auth/password';
 
 const registerSchema = z.object({
   orgName: z.string().min(2, 'Nombre de empresa requerido'),
@@ -40,9 +41,11 @@ export async function POST(request: NextRequest) {
     );
     const orgId = orgResult.rows[0].id;
 
-    // Create user (in dev, store plain text hint; in production use bcrypt)
+    // La contraseña se guarda hasheada con bcrypt. Antes se almacenaba en claro
+    // con el prefijo `$dev$`, de modo que un volcado de la tabla `users`
+    // entregaba directamente las credenciales de todos los usuarios.
     const fullName = `${validated.firstName} ${validated.lastName}`;
-    const passwordHash = `$dev$${validated.password}`; // Placeholder - use bcrypt in production
+    const passwordHash = await hashPassword(validated.password);
 
     const userResult = await pool.query(
       `INSERT INTO users (organization_id, email, name, role, password_hash, is_active)

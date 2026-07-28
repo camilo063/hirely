@@ -174,29 +174,22 @@ export async function procesarAplicacionPortal(params: {
   const nombre = nameParts[0] || params.nombre;
   const apellido = nameParts.slice(1).join(' ') || '';
 
-  if (candidatoExistente.rows.length > 0) {
+  // ¿El candidato ya existia en la organizacion?
+  //
+  // Este formulario es PUBLICO y solo identifica por email. Antes se hacia un
+  // UPDATE del perfil con los datos recibidos: bastaba conocer el correo de
+  // alguien para reescribir su nombre, telefono, LinkedIn y experiencia, y (mas
+  // abajo) SUSTITUIR SU HOJA DE VIDA, porque el archivo se guarda con nombre fijo
+  // bajo el mismo candidato. Un tercero podia alterar el expediente de un
+  // candidato en proceso y contaminar el scoring, que se recalcula sobre el CV.
+  //
+  // Ahora, cuando el candidato ya existe, solo se crea la aplicacion: sus datos
+  // no se tocan. Lo aportado en el formulario se conserva en las notas de la
+  // aplicacion, para que el reclutador lo vea y decida.
+  const esCandidatoExistente = candidatoExistente.rows.length > 0;
+
+  if (esCandidatoExistente) {
     candidatoId = candidatoExistente.rows[0].id;
-    await pool.query(
-      `UPDATE candidatos SET
-         nombre = COALESCE($1, nombre),
-         apellido = COALESCE($2, apellido),
-         telefono = COALESCE($3, telefono),
-         ubicacion = COALESCE($4, ubicacion),
-         linkedin_url = COALESCE($5, linkedin_url),
-         experiencia_anos = COALESCE($6, experiencia_anos),
-         nivel_educativo = COALESCE($7, nivel_educativo),
-         habilidades = CASE WHEN $8::jsonb != '[]'::jsonb THEN $8::jsonb ELSE habilidades END,
-         updated_at = NOW()
-       WHERE id = $9`,
-      [
-        nombre, apellido,
-        params.telefono || null, params.ubicacion || null,
-        params.linkedinUrl || null, params.experienciaAnos ?? null,
-        params.nivelEducativo || null,
-        JSON.stringify(params.habilidades || []),
-        candidatoId,
-      ]
-    );
   } else {
     const newCandidato = await pool.query(
       `INSERT INTO candidatos
@@ -215,12 +208,22 @@ export async function procesarAplicacionPortal(params: {
     candidatoId = newCandidato.rows[0].id;
   }
 
-  // Save CV if uploaded
+  // Save CV if uploaded.
+  //
+  // Solo se escribe `cv_url` para candidatos NUEVOS. Para uno que ya existe el
+  // archivo se guarda bajo una clave propia de esta postulacion, de modo que su
+  // hoja de vida actual queda intacta: sobrescribirla era el segundo tramo del
+  // fallo anterior, y ademas destruia el CV sobre el que ya se habia puntuado.
+  let cvUrlNuevo: string | null = null;
   if (params.cvFile) {
     try {
       const { saveFile } = await import('@/lib/utils/file-storage');
-      const saved = await saveFile(params.cvFile, candidatoId, 'cv', vacante.organization_id, 'candidatos');
-      await pool.query('UPDATE candidatos SET cv_url = $1 WHERE id = $2', [saved.url, candidatoId]);
+      const claveArchivo = esCandidatoExistente ? `cv-postulacion-${Date.now()}` : 'cv';
+      const saved = await saveFile(params.cvFile, candidatoId, claveArchivo, vacante.organization_id, 'candidatos');
+      cvUrlNuevo = saved.url;
+      if (!esCandidatoExistente) {
+        await pool.query('UPDATE candidatos SET cv_url = $1 WHERE id = $2', [saved.url, candidatoId]);
+      }
     } catch (error) {
       console.error('[Portal] Error guardando CV:', error);
     }
@@ -237,7 +240,23 @@ export async function procesarAplicacionPortal(params: {
       params.comoSeEntero || 'portal',
       params.referrerUrl || null,
       params.ipAddress || null,
-      params.cartaPresentacion ? `Carta de presentación: ${params.cartaPresentacion}` : null,
+      // Para un candidato que ya existia, los datos del formulario NO se
+      // escriben en su perfil: se dejan aqui para que el reclutador los vea y
+      // decida si actualizar la ficha.
+      [
+        params.cartaPresentacion ? `Carta de presentación: ${params.cartaPresentacion.slice(0, 5000)}` : null,
+        esCandidatoExistente
+          ? `Datos declarados en esta postulación: ${JSON.stringify({
+              nombre: params.nombre,
+              telefono: params.telefono,
+              ubicacion: params.ubicacion,
+              linkedin: params.linkedinUrl,
+              experiencia_anos: params.experienciaAnos,
+              nivel_educativo: params.nivelEducativo,
+              cv_adjunto: cvUrlNuevo,
+            })}`
+          : null,
+      ].filter(Boolean).join('\n\n') || null,
     ]
   );
   const aplicacionId = aplicacion.rows[0].id;
@@ -307,7 +326,7 @@ export async function procesarAplicacionPortal(params: {
       tipo: 'nueva_aplicacion',
       titulo: 'Nueva aplicacion recibida',
       mensaje: `${params.nombre} aplico a ${vacante.titulo}`,
-      meta: { aplicacion_id: aplicacionId, candidato_id: candidatoId, vacante_id: vacante.id, url: `/vacantes/${vacante.id}/candidatos` },
+      meta: { aplicacion_id: aplicacionId, candidato_id: candidatoId, vacante_id: vacante.id, url: `/vacantes/${vacante.id}` },
     });
   } catch (e) {
     console.error('[notificacion] Error:', e);

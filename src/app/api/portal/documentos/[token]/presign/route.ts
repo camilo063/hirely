@@ -12,6 +12,8 @@ const ALLOWED_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
+const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx'];
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 /**
@@ -59,10 +61,31 @@ export async function POST(
       );
     }
 
-    // Validate file size
-    if (fileSize && fileSize > MAX_FILE_SIZE) {
+    // Validate file size.
+    // `fileSize` lo declara el cliente, asi que se exige: omitirlo era la forma
+    // de saltarse el limite y obtener una URL presignada sin tope de tamaño,
+    // con la que se podia subir un archivo de cualquier peso al bucket desde un
+    // endpoint publico.
+    const tamano = Number(fileSize);
+    if (!Number.isFinite(tamano) || tamano <= 0) {
+      return NextResponse.json(
+        { success: false, error: 'No pudimos determinar el tamaño del archivo. Intenta de nuevo.' },
+        { status: 400 }
+      );
+    }
+    if (tamano > MAX_FILE_SIZE) {
       return NextResponse.json(
         { success: false, error: `Archivo demasiado grande. Maximo: ${MAX_FILE_SIZE / 1024 / 1024}MB` },
+        { status: 400 }
+      );
+    }
+
+    // La extension tambien se valida (el MIME lo declara el cliente y puede
+    // mentir; el nombre termina siendo la key en el bucket).
+    const extension = filename.slice(filename.lastIndexOf('.')).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(extension)) {
+      return NextResponse.json(
+        { success: false, error: 'Formato no permitido. Use PDF, JPG, PNG o Word.' },
         { status: 400 }
       );
     }
@@ -90,11 +113,19 @@ export async function POST(
       );
     }
 
-    // Build S3 key and generate presigned upload URL
+    // Build S3 key and generate presigned upload URL.
+    // El nombre se ancla al documento (id si viene, si no el tipo) y no al
+    // nombre original del archivo: asi resubir un documento sobrescribe la
+    // version anterior en vez de acumular copias en el bucket.
     const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+    // Igual que en la subida directa: la clave sale del `tipo`, no del
+    // `documento_id` del cliente, para que dos requisitos no colisionen en el
+    // mismo objeto del bucket.
     const safeFilename = `${tipo}${ext}`;
     const key = buildS3Key(orgId, 'documentos', aplicacionId, safeFilename);
-    const uploadUrl = await getPresignedUploadUrl(key, contentType, 900); // 15 min expiry
+    // El tamaño se firma en la URL: S3 rechaza el PUT si no coincide, asi que el
+    // limite de 10 MB deja de depender de la buena fe del cliente.
+    const uploadUrl = await getPresignedUploadUrl(key, contentType, 900, tamano); // 15 min expiry
 
     return NextResponse.json({
       success: true,

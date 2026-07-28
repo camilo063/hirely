@@ -12,6 +12,11 @@ import { createContrato, autoPoblarDatos } from '@/lib/services/contratos.servic
 import { registrarOnboardingContratado } from '@/lib/services/onboarding.service';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
 import { getPipelineEstadosConfig } from '@/lib/services/pipeline-config.service';
+import { requireEscritura } from '@/lib/auth/authorization';
+import {
+  transicionarEstado,
+  calcularEstadosCompletados,
+} from '@/lib/services/pipeline-transicion.service';
 
 export const maxDuration = 10;
 
@@ -20,6 +25,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const userId = await getUserId();
     const { id } = await params;
@@ -52,7 +59,8 @@ export async function PATCH(
 
     // 2. Validate transition using state machine
     const allowAuto = body.forzar_auto === true;
-    const transiciones = getTransicionesPermitidas(estadoActual, estadosCompletados, { allowAuto, estados: await getPipelineEstadosConfig(orgId) });
+    const catalogoEstados = await getPipelineEstadosConfig(orgId);
+    const transiciones = getTransicionesPermitidas(estadoActual, estadosCompletados, { allowAuto, estados: catalogoEstados });
     const transicion = transiciones.find((t) => t.state.key === nuevoEstado);
 
     if (!transicion || !transicion.permitida) {
@@ -63,11 +71,15 @@ export async function PATCH(
       );
     }
 
-    // 3. Build updated estados_completados (append old estado if not already there)
-    const nuevosEstadosCompletados = [...estadosCompletados];
-    if (!nuevosEstadosCompletados.includes(estadoActual)) {
-      nuevosEstadosCompletados.push(estadoActual);
-    }
+    // 3. Build updated estados_completados.
+    // Se delega en el mismo calculo que usan los servicios para que el historial
+    // sea identico venga de donde venga la transicion.
+    const nuevosEstadosCompletados = calcularEstadosCompletados(
+      estadoActual,
+      nuevoEstado,
+      estadosCompletados,
+      catalogoEstados
+    );
 
     // 4. Handle side effects for 'seleccionado'
     if (nuevoEstado === 'seleccionado') {
@@ -91,24 +103,27 @@ export async function PATCH(
       }
 
       // Auto-advance to documentos_pendientes
-      const completadosConSeleccionado = [...nuevosEstadosCompletados];
-      if (!completadosConSeleccionado.includes('seleccionado')) {
-        completadosConSeleccionado.push('seleccionado');
-      }
+      await transicionarEstado(id, 'documentos_pendientes', { orgId });
 
-      await pool.query(
-        `UPDATE aplicaciones
-         SET estado = 'documentos_pendientes',
-             estados_completados = $2,
-             updated_at = NOW()
-         WHERE id = $1`,
-        [id, completadosConSeleccionado]
+      // Si el checklist no exige ningun documento, el tramo ya esta cumplido y
+      // se encadena el segundo avance. De lo contrario la aplicacion se quedaba
+      // esperando una subida que nunca iba a ocurrir, con 'documentos_completos'
+      // inalcanzable (es automatico) y 'contratado' bloqueado detras de el.
+      const sinDocs = await pool.query(
+        `SELECT documentos_completos FROM aplicaciones WHERE id = $1`,
+        [id]
       );
+      if (sinDocs.rows[0]?.documentos_completos === true) {
+        await transicionarEstado(id, 'documentos_completos', {
+          soloDesde: ['documentos_pendientes'],
+          orgId,
+        });
+      }
 
       // Log activity
       try {
         await pool.query(
-          `INSERT INTO activity_log (organization_id, user_id, entidad, entidad_id, accion, detalles)
+          `INSERT INTO activity_log (organization_id, user_id, entity_type, entity_id, action, details)
            VALUES ($1, $2, 'aplicacion', $3, 'cambio_estado', $4)`,
           [
             orgId,
@@ -139,14 +154,14 @@ export async function PATCH(
           tipo: 'pipeline_estado_cambiado',
           titulo: 'Pipeline actualizado',
           mensaje: `${candidatoNombreSel} cambio a documentos_pendientes`,
-          meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdSel}/candidatos` },
+          meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdSel}` },
         });
         await crearNotificacion({
           organizacionId: orgId,
           tipo: 'candidato_seleccionado',
           titulo: 'Candidato seleccionado',
           mensaje: `${candidatoNombreSel} fue seleccionado`,
-          meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdSel}/candidatos` },
+          meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdSel}` },
         });
       } catch (e) {
         console.error('[notificacion] Error:', e);
@@ -388,7 +403,11 @@ export async function PATCH(
            estados_completados = $2,
            motivo_descarte = $3,
            updated_at = NOW()
-       WHERE id = $4 AND organization_id = $5
+       WHERE id = $4
+         AND EXISTS (
+           SELECT 1 FROM vacantes v
+           WHERE v.id = aplicaciones.vacante_id AND v.organization_id = $5
+         )
        RETURNING *`,
       [
         nuevoEstado,
@@ -406,7 +425,7 @@ export async function PATCH(
     // 7. Log activity
     try {
       await pool.query(
-        `INSERT INTO activity_log (organization_id, user_id, entidad, entidad_id, accion, detalles)
+        `INSERT INTO activity_log (organization_id, user_id, entity_type, entity_id, action, details)
          VALUES ($1, $2, 'aplicacion', $3, 'cambio_estado', $4)`,
         [
           orgId,
@@ -432,7 +451,7 @@ export async function PATCH(
         tipo: 'pipeline_estado_cambiado',
         titulo: 'Pipeline actualizado',
         mensaje: `${candidatoNombreNotif} cambio a ${nuevoEstado}`,
-        meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdNotif}/candidatos` },
+        meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdNotif}` },
       });
 
       // Additional notification for 'contratado'
@@ -442,7 +461,7 @@ export async function PATCH(
           tipo: 'candidato_contratado',
           titulo: 'Candidato contratado',
           mensaje: `${candidatoNombreNotif} fue contratado`,
-          meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdNotif}/candidatos` },
+          meta: { aplicacion_id: id, url: `/vacantes/${vacanteIdNotif}` },
         });
       }
     } catch (e) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
+import { apiError, apiResponse } from '@/lib/utils/api-response';
 
 interface PipelineInsight {
   tipo: string;
@@ -29,7 +30,8 @@ export async function GET(
       [vacanteId, orgId]
     );
     if (vacanteR.rows.length === 0) {
-      return NextResponse.json(null);
+      // Vacante inexistente o de otra organizacion: 404, no 200 con null.
+      return apiResponse({ error: 'Vacante no encontrada' }, 404);
     }
     const slug = vacanteR.rows[0].slug;
 
@@ -65,7 +67,7 @@ export async function GET(
         descripcion: 'Tienes candidatos que aun no tienen Score ATS calculado. Calculalo para poder compararlos.',
         cantidad: sinScore.length,
         cta_texto: 'Ver candidatos',
-        cta_href: `/vacantes/${vacanteId}/candidatos`,
+        cta_href: `/vacantes/${vacanteId}`,
         prioridad: 'media',
       });
     }
@@ -79,7 +81,7 @@ export async function GET(
         descripcion: 'Estos candidatos pasaron el corte del Score ATS. Enviales la entrevista telefonica con Dapta.',
         cantidad: preseleccionados.length,
         cta_texto: 'Enviar entrevista IA',
-        cta_href: `/vacantes/${vacanteId}/candidatos`,
+        cta_href: `/vacantes/${vacanteId}`,
         prioridad: 'alta',
       });
     }
@@ -107,7 +109,7 @@ export async function GET(
         descripcion: `Tienes ${evaluados.length} candidatos completamente evaluados. Revisa el score final y selecciona al mejor.`,
         cantidad: evaluados.length,
         cta_texto: 'Ver comparativa de scores',
-        cta_href: `/vacantes/${vacanteId}/candidatos`,
+        cta_href: `/vacantes/${vacanteId}`,
         prioridad: 'alta',
       });
     }
@@ -126,7 +128,7 @@ export async function GET(
         descripcion: 'Llevan mas de 3 dias sin completar el portal de documentos. Considera enviarles un recordatorio.',
         cantidad: docsPendientes.length,
         cta_texto: 'Ver estado de documentos',
-        cta_href: `/vacantes/${vacanteId}/candidatos`,
+        cta_href: `/vacantes/${vacanteId}`,
         prioridad: 'media',
       });
     }
@@ -149,6 +151,8 @@ export async function GET(
     return NextResponse.json(null);
   } catch (error) {
     console.error('[GET /api/vacantes/[id]/pipeline-insight]', error);
-    return NextResponse.json(null);
+    // Devolver `null` con 200 ocultaba 401/403 y cualquier fallo real: el
+    // cliente no podia distinguir 'sin datos' de 'sin permiso'.
+    return apiError(error);
   }
 }

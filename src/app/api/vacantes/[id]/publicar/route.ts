@@ -5,6 +5,7 @@ import { publicarVacante } from '@/lib/services/portal-vacantes.service';
 import { shareVacanteOnLinkedIn } from '@/lib/services/linkedin.service';
 import { linkedInShareSchema } from '@/lib/validations/linkedin.schema';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 30;
 
@@ -14,6 +15,8 @@ export async function POST(
 ) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const userId = await getUserId();
     const { id } = await params;

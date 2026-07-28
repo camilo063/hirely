@@ -12,7 +12,11 @@ export async function GET(request: NextRequest) {
     const orgId = await getOrgId();
 
     const vacanteId = request.nextUrl.searchParams.get('vacante_id');
-    if (!vacanteId) return apiError(new Error('vacante_id es requerido'));
+    if (!vacanteId) return apiResponse({ error: 'vacante_id es requerido' }, 400);
+    // Un UUID mal formado hacia reventar la consulta con 500.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vacanteId)) {
+      return apiResponse({ error: 'vacante_id no es un identificador valido' }, 400);
+    }
 
     const result = await pool.query(
       `SELECT
@@ -26,8 +30,8 @@ export async function GET(request: NextRequest) {
          ev.score_total as eval_tecnica_score,
          ev.aprobada as eval_tecnica_aprobada
        FROM aplicaciones a
-       JOIN candidatos c ON c.id = a.candidato_id
        JOIN vacantes v ON v.id = a.vacante_id
+       JOIN candidatos c ON c.id = a.candidato_id AND c.organization_id = v.organization_id
        LEFT JOIN entrevistas_ia ei ON ei.aplicacion_id = a.id AND ei.estado = 'completada'
        LEFT JOIN entrevistas_humanas eh ON eh.aplicacion_id = a.id AND eh.estado = 'realizada'
        LEFT JOIN evaluaciones ev ON ev.id = a.evaluacion_tecnica_id

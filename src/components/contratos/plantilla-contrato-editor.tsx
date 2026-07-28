@@ -16,6 +16,7 @@ import {
 import { renderPlantillaContrato } from '@/lib/utils/plantillas-contrato-default';
 import { mapEmpresaConfigToDatos } from '@/lib/utils/empresa-contrato';
 import { useTiposContrato } from '@/hooks/useTiposContrato';
+import { sanitizarHtml } from '@/lib/utils/sanitize-html';
 
 // Union of every variable across all contract types, deduplicated by key.
 // This is the source of truth for what {{variables}} the templates support.
@@ -298,7 +299,7 @@ export function PlantillaContratoEditor() {
               </Label>
               {showPreview ? (
                 <div className="border rounded-md p-4 bg-white min-h-[200px] max-h-[400px] overflow-y-auto text-sm"
-                  dangerouslySetInnerHTML={{ __html: getPreviewHtml() }} />
+                  dangerouslySetInnerHTML={{ __html: sanitizarHtml(getPreviewHtml()) }} />
               ) : (
                 <RichTextEditor
                   ref={newEditorRef}
@@ -374,7 +375,7 @@ export function PlantillaContratoEditor() {
                       {editShowPreview ? (
                         <div
                           className="border rounded-md p-4 bg-white min-h-[300px] max-h-[500px] overflow-y-auto text-sm"
-                          dangerouslySetInnerHTML={{ __html: getPreviewHtmlFor(selected.contenido_html, p.tipo) }}
+                          dangerouslySetInnerHTML={{ __html: sanitizarHtml(getPreviewHtmlFor(selected.contenido_html, p.tipo)) }}
                         />
                       ) : (
                         <>
@@ -434,7 +435,7 @@ export function PlantillaContratoEditor() {
                     {previewId === p.id && (
                       <div
                         className="mt-3 border rounded-md p-4 bg-white max-h-[500px] overflow-y-auto text-sm"
-                        dangerouslySetInnerHTML={{ __html: getPreviewHtmlFor(p.contenido_html, p.tipo) }}
+                        dangerouslySetInnerHTML={{ __html: sanitizarHtml(getPreviewHtmlFor(p.contenido_html, p.tipo)) }}
                       />
                     )}
                   </div>

@@ -4,6 +4,7 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { listarPreguntas, crearPregunta } from '@/lib/services/banco-preguntas.service';
 import { preguntaCreateSchema } from '@/lib/validations/evaluacion.schema';
 import type { Dificultad, TipoPregunta, EstadoPregunta } from '@/lib/types/evaluacion-tecnica.types';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 10;
 
@@ -34,6 +35,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Escritura: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const userId = await getUserId();
     const body = await request.json();

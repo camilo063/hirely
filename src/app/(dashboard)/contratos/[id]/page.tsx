@@ -35,6 +35,7 @@ export default function ContratoDetailPage() {
   const [loading, setLoading] = useState(true);
   const [firmaLoading, setFirmaLoading] = useState(false);
   const [confirmarFirmaOpen, setConfirmarFirmaOpen] = useState(false);
+  const [enviarFirmaOpen, setEnviarFirmaOpen] = useState(false);
   const [fechaFirma, setFechaFirma] = useState(new Date().toISOString().split('T')[0]);
   const [notasFirma, setNotasFirma] = useState('');
   const [empresaDatos, setEmpresaDatos] = useState<Record<string, string>>({});
@@ -99,6 +100,7 @@ export default function ContratoDetailPage() {
   }, [contrato, empresaDatos, regenerating, handleRegenerar]);
 
   async function handleEnviarFirma() {
+    setEnviarFirmaOpen(false);
     setFirmaLoading(true);
     try {
       const res = await fetch(`/api/contratos/${params.id}/firmar`, {
@@ -234,12 +236,33 @@ export default function ContratoDetailPage() {
             estado={contrato.estado}
             firmaUrl={null}
             firmadoAt={contrato.firmado_at ? String(contrato.firmado_at) : null}
-            onEnviarFirma={handleEnviarFirma}
+            onEnviarFirma={() => setEnviarFirmaOpen(true)}
             onConfirmarFirma={() => setConfirmarFirmaOpen(true)}
             loading={firmaLoading}
           />
         </div>
       </div>
+
+      <AlertDialog open={enviarFirmaOpen} onOpenChange={setEnviarFirmaOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enviar contrato para firma</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se enviara el contrato a firma electronica y el candidato recibira un email para firmarlo. ¿Continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={firmaLoading}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleEnviarFirma}
+              disabled={firmaLoading}
+              className="bg-teal hover:bg-teal/90 text-white"
+            >
+              {firmaLoading ? 'Enviando...' : 'Enviar para firma'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmarFirmaOpen} onOpenChange={setConfirmarFirmaOpen}>
         <AlertDialogContent>

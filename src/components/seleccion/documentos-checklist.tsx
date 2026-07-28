@@ -251,6 +251,9 @@ export function DocumentosChecklist({ aplicacionId, portalToken, onComplete }: P
               rows={3}
               className="mt-1"
             />
+            <p className="text-xs text-muted-foreground mt-2">
+              Se notificara al candidato por email con el motivo del rechazo.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectDialog(null)}>Cancelar</Button>

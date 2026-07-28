@@ -60,6 +60,7 @@ export interface Aplicacion {
   notas_internas: string | null;
   motivo_descarte: string | null;
   estados_completados: string[];
+  estado_updated_at: string | null;
   created_at: Date;
   updated_at: Date;
 }

@@ -1,3 +1,4 @@
+import { escaparHtml } from '@/lib/utils/sanitize-html';
 /**
  * Email HTML templates for selection and document notifications.
  * Inline CSS, Hirely branding, mobile responsive (max-width 600px).
@@ -58,9 +59,38 @@ export const VARIABLES_RECHAZO = [
   { key: 'empresa_nombre', label: 'Nombre de la empresa', ejemplo: 'Hirely Demo' },
 ];
 
-/** Substitute {{variable}} placeholders in a template string */
+/**
+ * Sustituye los marcadores {{variable}} de una plantilla.
+ *
+ * Los valores se ESCAPAN antes de insertarlos. La plantilla en si es HTML que un
+ * administrador edita (y que ya se sanea al guardarse), pero las variables traen
+ * datos de terceros: `candidato_nombre` sale del formulario publico de
+ * postulacion o del perfil de LinkedIn. Sin escapar, quien se postula puede
+ * inyectar enlaces o reescribir el cuerpo de un correo que sale con el dominio
+ * verificado y la marca del cliente — phishing con reputacion prestada.
+ */
 export function sustituirVariables(template: string, variables: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] || '');
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => escaparHtml(variables[key] || ''));
+}
+
+/**
+ * Escapa en profundidad los campos de texto de los parametros de una plantilla.
+ *
+ * Se aplica a la entrada de cada `email*Template` para no tener que acordarse de
+ * escapar 90 interpolaciones una por una — olvidar UNA sola reabre el agujero.
+ * Los numeros, booleanos y nulos pasan intactos.
+ */
+function escaparParams<T>(params: T): T {
+  if (typeof params === 'string') return escaparHtml(params) as unknown as T;
+  if (Array.isArray(params)) return params.map(escaparParams) as unknown as T;
+  if (params && typeof params === 'object') {
+    const salida: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(params as Record<string, unknown>)) {
+      salida[k] = escaparParams(v);
+    }
+    return salida as unknown as T;
+  }
+  return params;
 }
 
 const HIRELY_STYLES = {
@@ -87,26 +117,33 @@ export function emailSeleccionTemplate(params: {
   fechaInicio?: string;
   salario?: string;
 }): { subject: string; htmlBody: string; textBody: string } {
+  // Estas listas se construyen ANTES del literal de htmlBody, asi que escapan
+  // sus propios valores: son HTML y los datos vienen del formulario publico.
   const docsHtml = params.documentosRequeridos
-    .map(d => `<li style="${HIRELY_STYLES.listItem}"><strong>${d.label}</strong>${d.descripcion ? ` — ${d.descripcion}` : ''}</li>`)
+    .map(d => `<li style="${HIRELY_STYLES.listItem}"><strong>${escaparHtml(d.label)}</strong>${d.descripcion ? ` — ${escaparHtml(d.descripcion)}` : ''}</li>`)
     .join('');
 
   const detallesOferta = [];
-  if (params.fechaInicio) detallesOferta.push(`<strong>Fecha de inicio tentativa:</strong> ${params.fechaInicio}`);
-  if (params.salario) detallesOferta.push(`<strong>Salario ofrecido:</strong> ${params.salario}`);
+  if (params.fechaInicio) detallesOferta.push(`<strong>Fecha de inicio tentativa:</strong> ${escaparHtml(params.fechaInicio)}`);
+  if (params.salario) detallesOferta.push(`<strong>Salario ofrecido:</strong> ${escaparHtml(params.salario)}`);
 
-  const htmlBody = `
+    // Copia escapada SOLO para el HTML. `subject` y `textBody` son texto
+  // plano y usan los valores originales: escaparlos mostraba entidades
+  // ("Perez &amp; Cia") en el asunto que ve el destinatario.
+  const p = escaparParams(params);
+
+const htmlBody = `
     <div style="${HIRELY_STYLES.wrapper}">
       <div style="${HIRELY_STYLES.header}">
-        <h1 style="${HIRELY_STYLES.headerText}">${params.empresaNombre}</h1>
+        <h1 style="${HIRELY_STYLES.headerText}">${p.empresaNombre}</h1>
       </div>
       <div style="${HIRELY_STYLES.body}">
-        <h2 style="${HIRELY_STYLES.h2}">Felicidades, ${params.candidatoNombre}!</h2>
+        <h2 style="${HIRELY_STYLES.h2}">Felicidades, ${p.candidatoNombre}!</h2>
         <p style="${HIRELY_STYLES.p}">
           Nos complace informarte que has sido <strong>seleccionado(a)</strong> para la posicion de
-          <strong>${params.vacanteTitulo}</strong> en <strong>${params.empresaNombre}</strong>.
+          <strong>${p.vacanteTitulo}</strong> en <strong>${p.empresaNombre}</strong>.
         </p>
-        ${params.mensajePersonalizado ? `<p style="${HIRELY_STYLES.p}">${params.mensajePersonalizado}</p>` : ''}
+        ${p.mensajePersonalizado ? `<p style="${HIRELY_STYLES.p}">${p.mensajePersonalizado}</p>` : ''}
         ${detallesOferta.length > 0 ? `
           <div style="background: #F0F9FF; padding: 16px; border-radius: 8px; margin: 20px 0;">
             ${detallesOferta.map(d => `<p style="color: #0A1F3F; font-size: 14px; margin: 4px 0;">${d}</p>`).join('')}
@@ -119,7 +156,7 @@ export function emailSeleccionTemplate(params: {
           ${docsHtml}
         </ul>
         <div style="text-align: center; margin: 32px 0;">
-          <a href="${params.portalUrl}" style="${HIRELY_STYLES.ctaBtn}">
+          <a href="${p.portalUrl}" style="${HIRELY_STYLES.ctaBtn}">
             Subir mis documentos
           </a>
         </div>
@@ -128,7 +165,7 @@ export function emailSeleccionTemplate(params: {
         </p>
         <hr style="${HIRELY_STYLES.hr}">
         <p style="${HIRELY_STYLES.footer}">
-          Este email fue enviado por ${params.empresaNombre} a traves de Hirely.
+          Este email fue enviado por ${p.empresaNombre} a traves de Hirely.
         </p>
       </div>
     </div>
@@ -153,26 +190,31 @@ export function emailRechazoTemplate(params: {
   empresaNombre: string;
   mensajePersonalizado?: string;
 }): { subject: string; htmlBody: string; textBody: string } {
-  const htmlBody = `
+    // Copia escapada SOLO para el HTML. `subject` y `textBody` son texto
+  // plano y usan los valores originales: escaparlos mostraba entidades
+  // ("Perez &amp; Cia") en el asunto que ve el destinatario.
+  const p = escaparParams(params);
+
+const htmlBody = `
     <div style="${HIRELY_STYLES.wrapper}">
       <div style="${HIRELY_STYLES.header}">
-        <h1 style="${HIRELY_STYLES.headerText}">${params.empresaNombre}</h1>
+        <h1 style="${HIRELY_STYLES.headerText}">${p.empresaNombre}</h1>
       </div>
       <div style="${HIRELY_STYLES.body}">
-        <h2 style="${HIRELY_STYLES.h2}">Estimado(a) ${params.candidatoNombre},</h2>
+        <h2 style="${HIRELY_STYLES.h2}">Estimado(a) ${p.candidatoNombre},</h2>
         <p style="${HIRELY_STYLES.p}">
           Queremos agradecerte sinceramente por tu interes en la posicion de
-          <strong>${params.vacanteTitulo}</strong> en <strong>${params.empresaNombre}</strong>
+          <strong>${p.vacanteTitulo}</strong> en <strong>${p.empresaNombre}</strong>
           y por el tiempo que invertiste en el proceso de seleccion.
         </p>
         <p style="${HIRELY_STYLES.p}">
           Despues de una cuidadosa evaluacion, hemos decidido continuar con otro perfil
           que se ajusta mas a las necesidades actuales del cargo.
         </p>
-        ${params.mensajePersonalizado ? `<p style="${HIRELY_STYLES.p}">${params.mensajePersonalizado}</p>` : ''}
+        ${p.mensajePersonalizado ? `<p style="${HIRELY_STYLES.p}">${p.mensajePersonalizado}</p>` : ''}
         <p style="${HIRELY_STYLES.p}">
           Valoramos mucho tu perfil profesional y te animamos a postularte a futuras
-          vacantes en ${params.empresaNombre}. Tu talento y dedicacion seran sin duda un
+          vacantes en ${p.empresaNombre}. Tu talento y dedicacion seran sin duda un
           gran aporte en la oportunidad indicada.
         </p>
         <p style="${HIRELY_STYLES.p}">
@@ -181,11 +223,11 @@ export function emailRechazoTemplate(params: {
         <p style="${HIRELY_STYLES.p}">
           Cordialmente,<br/>
           <strong>Equipo de Recursos Humanos</strong><br/>
-          ${params.empresaNombre}
+          ${p.empresaNombre}
         </p>
         <hr style="${HIRELY_STYLES.hr}">
         <p style="${HIRELY_STYLES.footer}">
-          Este email fue enviado por ${params.empresaNombre} a traves de Hirely.
+          Este email fue enviado por ${p.empresaNombre} a traves de Hirely.
         </p>
       </div>
     </div>
@@ -211,7 +253,10 @@ export function emailNotificacionDapta(params: {
   const duracionMin = Math.round(params.duracionSegundos / 60);
   const scoreColor = params.scoreIA >= 70 ? '#16a34a' : params.scoreIA >= 50 ? '#d97706' : '#dc2626';
 
-  const htmlBody = `
+    // Copia escapada SOLO para el HTML; el asunto va con los valores originales.
+  const p = escaparParams(params);
+
+const htmlBody = `
     <div style="${HIRELY_STYLES.wrapper}">
       <div style="${HIRELY_STYLES.header}">
         <h1 style="${HIRELY_STYLES.headerText}">Hirely</h1>
@@ -219,22 +264,22 @@ export function emailNotificacionDapta(params: {
       <div style="${HIRELY_STYLES.body}">
         <h2 style="${HIRELY_STYLES.h2}">Entrevista IA completada</h2>
         <p style="${HIRELY_STYLES.p}">
-          La entrevista IA con <strong>${params.candidatoNombre}</strong> para la posicion de
-          <strong>${params.vacanteTitulo}</strong> ha finalizado.
+          La entrevista IA con <strong>${p.candidatoNombre}</strong> para la posicion de
+          <strong>${p.vacanteTitulo}</strong> ha finalizado.
         </p>
         <div style="background: #F0F9FF; padding: 20px; border-radius: 8px; margin: 20px 0;">
           <p style="color: #0A1F3F; font-size: 14px; margin: 4px 0;">
-            <strong>Score IA:</strong> <span style="color: ${scoreColor}; font-size: 18px; font-weight: bold;">${params.scoreIA}/100</span>
+            <strong>Score IA:</strong> <span style="color: ${scoreColor}; font-size: 18px; font-weight: bold;">${p.scoreIA}/100</span>
           </p>
           <p style="color: #0A1F3F; font-size: 14px; margin: 4px 0;">
             <strong>Duracion:</strong> ${duracionMin} minutos
           </p>
           <p style="color: #0A1F3F; font-size: 14px; margin: 4px 0;">
-            <strong>Recomendacion:</strong> ${params.recomendacion}
+            <strong>Recomendacion:</strong> ${p.recomendacion}
           </p>
         </div>
         <div style="text-align: center; margin: 32px 0;">
-          <a href="${params.dashboardUrl}" style="${HIRELY_STYLES.ctaBtn}">
+          <a href="${p.dashboardUrl}" style="${HIRELY_STYLES.ctaBtn}">
             Ver detalle de la entrevista
           </a>
         </div>
@@ -265,7 +310,10 @@ export function emailNotificacionEvaluacion(params: {
   const estadoBadgeColor = params.aprobada ? '#dcfce7' : '#fee2e2';
   const estadoTextColor = params.aprobada ? '#166534' : '#991b1b';
 
-  const htmlBody = `
+    // Copia escapada SOLO para el HTML; el asunto va con los valores originales.
+  const p = escaparParams(params);
+
+const htmlBody = `
     <div style="${HIRELY_STYLES.wrapper}">
       <div style="${HIRELY_STYLES.header}">
         <h1 style="${HIRELY_STYLES.headerText}">Hirely</h1>
@@ -273,15 +321,15 @@ export function emailNotificacionEvaluacion(params: {
       <div style="${HIRELY_STYLES.body}">
         <h2 style="${HIRELY_STYLES.h2}">Evaluacion tecnica completada</h2>
         <p style="${HIRELY_STYLES.p}">
-          <strong>${params.candidatoNombre}</strong> ha completado la evaluacion tecnica para la posicion de
-          <strong>${params.vacanteTitulo}</strong>.
+          <strong>${p.candidatoNombre}</strong> ha completado la evaluacion tecnica para la posicion de
+          <strong>${p.vacanteTitulo}</strong>.
         </p>
         <div style="background: #F0F9FF; padding: 20px; border-radius: 8px; margin: 20px 0;">
           <p style="color: #0A1F3F; font-size: 14px; margin: 4px 0;">
-            <strong>Score Tecnico:</strong> <span style="color: ${scoreColor}; font-size: 18px; font-weight: bold;">${params.scoreTecnico}/100</span>
+            <strong>Score Tecnico:</strong> <span style="color: ${scoreColor}; font-size: 18px; font-weight: bold;">${p.scoreTecnico}/100</span>
           </p>
           <p style="color: #0A1F3F; font-size: 14px; margin: 4px 0;">
-            <strong>Puntaje aprobatorio:</strong> ${params.puntajeAprobatorio}/100
+            <strong>Puntaje aprobatorio:</strong> ${p.puntajeAprobatorio}/100
           </p>
           <p style="color: #0A1F3F; font-size: 14px; margin: 8px 0 0 0;">
             <span style="display: inline-block; background: ${estadoBadgeColor}; color: ${estadoTextColor}; padding: 4px 16px; border-radius: 12px; font-weight: bold; font-size: 14px;">
@@ -290,7 +338,7 @@ export function emailNotificacionEvaluacion(params: {
           </p>
         </div>
         <div style="text-align: center; margin: 32px 0;">
-          <a href="${params.dashboardUrl}" style="${HIRELY_STYLES.ctaBtn}">
+          <a href="${p.dashboardUrl}" style="${HIRELY_STYLES.ctaBtn}">
             Ver detalle de la evaluacion
           </a>
         </div>
@@ -315,7 +363,12 @@ export function emailContratoFirmadoAdminTemplate(params: {
   dashboardUrl: string;
   firmadoAt: string;
 }): { subject: string; htmlBody: string } {
-  const htmlBody = `
+    // Copia escapada SOLO para el HTML. `subject` y `textBody` son texto
+  // plano y usan los valores originales: escaparlos mostraba entidades
+  // ("Perez &amp; Cia") en el asunto que ve el destinatario.
+  const p = escaparParams(params);
+
+const htmlBody = `
     <div style="${HIRELY_STYLES.wrapper}">
       <div style="${HIRELY_STYLES.header}">
         <h1 style="${HIRELY_STYLES.headerText}">Hirely</h1>
@@ -323,25 +376,25 @@ export function emailContratoFirmadoAdminTemplate(params: {
       <div style="${HIRELY_STYLES.body}">
         <h2 style="${HIRELY_STYLES.h2}">Contrato firmado</h2>
         <p style="${HIRELY_STYLES.p}">
-          El contrato de <strong>${params.candidatoNombre}</strong> para la posicion de
-          <strong>${params.vacanteTitulo}</strong> ha sido firmado exitosamente.
+          El contrato de <strong>${p.candidatoNombre}</strong> para la posicion de
+          <strong>${p.vacanteTitulo}</strong> ha sido firmado exitosamente.
         </p>
         <div style="background: #dcfce7; padding: 16px; border-radius: 8px; margin: 20px 0;">
           <p style="color: #166534; font-size: 14px; margin: 4px 0;">
-            <strong>Candidato:</strong> ${params.candidatoNombre}
+            <strong>Candidato:</strong> ${p.candidatoNombre}
           </p>
           <p style="color: #166534; font-size: 14px; margin: 4px 0;">
-            <strong>Vacante:</strong> ${params.vacanteTitulo}
+            <strong>Vacante:</strong> ${p.vacanteTitulo}
           </p>
           <p style="color: #166534; font-size: 14px; margin: 4px 0;">
-            <strong>Firmado:</strong> ${params.firmadoAt}
+            <strong>Firmado:</strong> ${p.firmadoAt}
           </p>
         </div>
         <p style="${HIRELY_STYLES.p}">
           El candidato esta listo para iniciar el proceso de onboarding.
         </p>
         <div style="text-align: center; margin: 32px 0;">
-          <a href="${params.dashboardUrl}" style="${HIRELY_STYLES.ctaBtn}">
+          <a href="${p.dashboardUrl}" style="${HIRELY_STYLES.ctaBtn}">
             Iniciar onboarding
           </a>
         </div>
@@ -364,19 +417,24 @@ export function emailContratoFirmadoCandidatoTemplate(params: {
   vacanteTitulo: string;
   empresaNombre: string;
 }): { subject: string; htmlBody: string } {
-  const htmlBody = `
+    // Copia escapada SOLO para el HTML. `subject` y `textBody` son texto
+  // plano y usan los valores originales: escaparlos mostraba entidades
+  // ("Perez &amp; Cia") en el asunto que ve el destinatario.
+  const p = escaparParams(params);
+
+const htmlBody = `
     <div style="${HIRELY_STYLES.wrapper}">
       <div style="${HIRELY_STYLES.header}">
-        <h1 style="${HIRELY_STYLES.headerText}">${params.empresaNombre}</h1>
+        <h1 style="${HIRELY_STYLES.headerText}">${p.empresaNombre}</h1>
       </div>
       <div style="${HIRELY_STYLES.body}">
         <h2 style="${HIRELY_STYLES.h2}">Tu contrato ha sido firmado exitosamente</h2>
         <p style="${HIRELY_STYLES.p}">
-          Hola <strong>${params.candidatoNombre}</strong>,
+          Hola <strong>${p.candidatoNombre}</strong>,
         </p>
         <p style="${HIRELY_STYLES.p}">
-          Te confirmamos que tu contrato para la posicion de <strong>${params.vacanteTitulo}</strong>
-          en <strong>${params.empresaNombre}</strong> ha sido firmado correctamente por todas las partes.
+          Te confirmamos que tu contrato para la posicion de <strong>${p.vacanteTitulo}</strong>
+          en <strong>${p.empresaNombre}</strong> ha sido firmado correctamente por todas las partes.
         </p>
         <div style="background: #dcfce7; padding: 16px; border-radius: 8px; margin: 20px 0; text-align: center;">
           <p style="color: #166534; font-size: 16px; font-weight: bold; margin: 0;">
@@ -390,11 +448,11 @@ export function emailContratoFirmadoCandidatoTemplate(params: {
         <p style="${HIRELY_STYLES.p}">
           Cordialmente,<br/>
           <strong>Equipo de Recursos Humanos</strong><br/>
-          ${params.empresaNombre}
+          ${p.empresaNombre}
         </p>
         <hr style="${HIRELY_STYLES.hr}">
         <p style="${HIRELY_STYLES.footer}">
-          Este email fue enviado por ${params.empresaNombre} a traves de Hirely.
+          Este email fue enviado por ${p.empresaNombre} a traves de Hirely.
         </p>
       </div>
     </div>
@@ -412,7 +470,12 @@ export function emailDocumentosCompletosTemplate(params: {
   vacanteTitulo: string;
   dashboardUrl: string;
 }): { subject: string; htmlBody: string; textBody: string } {
-  const htmlBody = `
+    // Copia escapada SOLO para el HTML. `subject` y `textBody` son texto
+  // plano y usan los valores originales: escaparlos mostraba entidades
+  // ("Perez &amp; Cia") en el asunto que ve el destinatario.
+  const p = escaparParams(params);
+
+const htmlBody = `
     <div style="${HIRELY_STYLES.wrapper}">
       <div style="${HIRELY_STYLES.header}">
         <h1 style="${HIRELY_STYLES.headerText}">Hirely</h1>
@@ -420,17 +483,17 @@ export function emailDocumentosCompletosTemplate(params: {
       <div style="${HIRELY_STYLES.body}">
         <h2 style="${HIRELY_STYLES.h2}">Documentos completos</h2>
         <p style="${HIRELY_STYLES.p}">
-          Hola ${params.reclutadorNombre},
+          Hola ${p.reclutadorNombre},
         </p>
         <p style="${HIRELY_STYLES.p}">
-          <strong>${params.candidatoNombre}</strong> ha subido todos los documentos requeridos
-          para la posicion de <strong>${params.vacanteTitulo}</strong>.
+          <strong>${p.candidatoNombre}</strong> ha subido todos los documentos requeridos
+          para la posicion de <strong>${p.vacanteTitulo}</strong>.
         </p>
         <p style="${HIRELY_STYLES.p}">
           Puedes revisar y verificar los documentos desde el panel de administracion.
         </p>
         <div style="text-align: center; margin: 32px 0;">
-          <a href="${params.dashboardUrl}" style="${HIRELY_STYLES.ctaBtn}">
+          <a href="${p.dashboardUrl}" style="${HIRELY_STYLES.ctaBtn}">
             Ver documentos
           </a>
         </div>
@@ -459,31 +522,36 @@ export function emailDocumentoRechazadoTemplate(params: {
   motivoRechazo: string;
   portalUrl: string;
 }): { subject: string; htmlBody: string; textBody: string } {
-  const htmlBody = `
+    // Copia escapada SOLO para el HTML. `subject` y `textBody` son texto
+  // plano y usan los valores originales: escaparlos mostraba entidades
+  // ("Perez &amp; Cia") en el asunto que ve el destinatario.
+  const p = escaparParams(params);
+
+const htmlBody = `
     <div style="${HIRELY_STYLES.wrapper}">
       <div style="${HIRELY_STYLES.header}">
-        <h1 style="${HIRELY_STYLES.headerText}">${params.empresaNombre}</h1>
+        <h1 style="${HIRELY_STYLES.headerText}">${p.empresaNombre}</h1>
       </div>
       <div style="${HIRELY_STYLES.body}">
         <h2 style="${HIRELY_STYLES.h2}">Documento requiere correccion</h2>
         <p style="${HIRELY_STYLES.p}">
-          Hola ${params.candidatoNombre},
+          Hola ${p.candidatoNombre},
         </p>
         <p style="${HIRELY_STYLES.p}">
-          Te informamos que el documento <strong>${params.documentoTipo}</strong> que enviaste
-          para la posicion de <strong>${params.vacanteTitulo}</strong> ha sido
+          Te informamos que el documento <strong>${p.documentoTipo}</strong> que enviaste
+          para la posicion de <strong>${p.vacanteTitulo}</strong> ha sido
           <span style="color: #dc2626; font-weight: bold;">rechazado</span>.
         </p>
         <div style="background: #FEF2F2; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626;">
           <p style="color: #991b1b; font-size: 14px; margin: 0;">
-            <strong>Motivo:</strong> ${params.motivoRechazo}
+            <strong>Motivo:</strong> ${p.motivoRechazo}
           </p>
         </div>
         <p style="${HIRELY_STYLES.p}">
           Por favor, sube nuevamente el documento corregido a traves del portal de documentos.
         </p>
         <div style="text-align: center; margin: 32px 0;">
-          <a href="${params.portalUrl}" style="${HIRELY_STYLES.ctaBtn}">
+          <a href="${p.portalUrl}" style="${HIRELY_STYLES.ctaBtn}">
             Subir documento corregido
           </a>
         </div>
@@ -492,7 +560,7 @@ export function emailDocumentoRechazadoTemplate(params: {
         </p>
         <hr style="${HIRELY_STYLES.hr}">
         <p style="${HIRELY_STYLES.footer}">
-          Este email fue enviado por ${params.empresaNombre} a traves de Hirely.
+          Este email fue enviado por ${p.empresaNombre} a traves de Hirely.
         </p>
       </div>
     </div>
@@ -518,7 +586,12 @@ export function emailContratadoTemplate(params: {
   if (params.salario) detalles.push(`<p style="color: #374151; margin: 6px 0;"><strong>Salario:</strong> ${params.salario}</p>`);
   if (params.fechaInicio) detalles.push(`<p style="color: #374151; margin: 6px 0;"><strong>Fecha de inicio:</strong> ${params.fechaInicio}</p>`);
 
-  const htmlBody = `
+    // Copia escapada SOLO para el HTML. `subject` y `textBody` son texto
+  // plano y usan los valores originales: escaparlos mostraba entidades
+  // ("Perez &amp; Cia") en el asunto que ve el destinatario.
+  const p = escaparParams(params);
+
+const htmlBody = `
     <div style="${HIRELY_STYLES.wrapper}">
       <div style="background: linear-gradient(135deg, #0A1F3F 0%, #1a3a6b 100%); padding: 40px 32px; border-radius: 12px 12px 0 0; text-align: center;">
         <div style="font-size: 48px; margin-bottom: 12px;">&#127881;</div>
@@ -527,11 +600,11 @@ export function emailContratadoTemplate(params: {
       </div>
       <div style="${HIRELY_STYLES.body}">
         <p style="${HIRELY_STYLES.p}">
-          Estimado/a <strong>${params.candidatoNombre}</strong>,
+          Estimado/a <strong>${p.candidatoNombre}</strong>,
         </p>
         <p style="${HIRELY_STYLES.p}">
           Nos complace comunicarte que has sido seleccionado/a para el cargo de
-          <strong>${params.vacanteTitulo}</strong> en <strong>${params.empresaNombre}</strong>.
+          <strong>${p.vacanteTitulo}</strong> en <strong>${p.empresaNombre}</strong>.
         </p>
         ${detalles.length > 0 ? `
         <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin: 24px 0;">
@@ -550,7 +623,7 @@ export function emailContratadoTemplate(params: {
         </p>
         <hr style="${HIRELY_STYLES.hr}">
         <p style="${HIRELY_STYLES.footer}">
-          Este email fue enviado por ${params.empresaNombre} a traves de Hirely.
+          Este email fue enviado por ${p.empresaNombre} a traves de Hirely.
         </p>
       </div>
     </div>
@@ -567,7 +640,12 @@ export function emailOnboardingTemplate(params: {
   vacanteTitulo: string;
   empresaNombre: string;
 }): { subject: string; htmlBody: string } {
-  const htmlBody = `
+    // Copia escapada SOLO para el HTML. `subject` y `textBody` son texto
+  // plano y usan los valores originales: escaparlos mostraba entidades
+  // ("Perez &amp; Cia") en el asunto que ve el destinatario.
+  const p = escaparParams(params);
+
+const htmlBody = `
     <div style="${HIRELY_STYLES.wrapper}">
       <div style="background: linear-gradient(135deg, #0A1F3F 0%, #1a3a6b 100%); padding: 40px 32px; border-radius: 12px 12px 0 0; text-align: center;">
         <div style="font-size: 48px; margin-bottom: 12px;">&#128640;</div>
@@ -576,11 +654,11 @@ export function emailOnboardingTemplate(params: {
       </div>
       <div style="${HIRELY_STYLES.body}">
         <p style="${HIRELY_STYLES.p}">
-          Hola <strong>${params.candidatoNombre}</strong>,
+          Hola <strong>${p.candidatoNombre}</strong>,
         </p>
         <p style="${HIRELY_STYLES.p}">
-          Te confirmamos que tu contrato para la posicion de <strong>${params.vacanteTitulo}</strong>
-          en <strong>${params.empresaNombre}</strong> ha sido firmado por todas las partes.
+          Te confirmamos que tu contrato para la posicion de <strong>${p.vacanteTitulo}</strong>
+          en <strong>${p.empresaNombre}</strong> ha sido firmado por todas las partes.
         </p>
         <div style="background: #dcfce7; padding: 16px; border-radius: 8px; margin: 20px 0; text-align: center;">
           <p style="color: #166534; font-size: 16px; font-weight: bold; margin: 0;">
@@ -597,11 +675,11 @@ export function emailOnboardingTemplate(params: {
         <p style="${HIRELY_STYLES.p}">
           Cordialmente,<br/>
           <strong>Equipo de Recursos Humanos</strong><br/>
-          ${params.empresaNombre}
+          ${p.empresaNombre}
         </p>
         <hr style="${HIRELY_STYLES.hr}">
         <p style="${HIRELY_STYLES.footer}">
-          Este email fue enviado por ${params.empresaNombre} a traves de Hirely.
+          Este email fue enviado por ${p.empresaNombre} a traves de Hirely.
         </p>
       </div>
     </div>
@@ -610,5 +688,147 @@ export function emailOnboardingTemplate(params: {
   return {
     subject: `Bienvenido/a a ${params.empresaNombre}! — Informacion de incorporacion`,
     htmlBody,
+  };
+}
+
+/**
+ * Recordatorio al candidato de que le faltan documentos por subir.
+ *
+ * Lo envia el cron de recordatorios. El tono sube de intensidad segun el numero
+ * de recordatorio ya enviados: el primero es un empujon amable, el ultimo avisa
+ * de que el proceso puede detenerse.
+ */
+export function emailRecordatorioDocumentosTemplate(params: {
+  candidatoNombre: string;
+  empresaNombre: string;
+  vacanteTitulo: string;
+  documentosFaltantes: string[];
+  portalUrl: string;
+  numeroRecordatorio: number;
+  diasRestantes: number;
+}): { subject: string; htmlBody: string; textBody: string } {
+  const esUltimo = params.numeroRecordatorio >= 3;
+
+  const intro = esUltimo
+    ? `Aun tenemos pendientes algunos documentos tuyos. Sin ellos no podemos continuar con tu proceso de contratacion.`
+    : `Notamos que todavia te faltan algunos documentos por subir. Es rapido: puedes hacerlo desde tu celular en un par de minutos.`;
+
+  // Igual que arriba: HTML construido fuera del literal, se escapa aqui.
+  const listaFaltantes = params.documentosFaltantes
+    .map(
+      (d) =>
+        `<li style="margin-bottom: 6px; color: #334155; font-size: 15px;">${escaparHtml(d)}</li>`
+    )
+    .join('');
+
+    // Copia escapada SOLO para el HTML. `subject` y `textBody` son texto
+  // plano y usan los valores originales: escaparlos mostraba entidades
+  // ("Perez &amp; Cia") en el asunto que ve el destinatario.
+  const p = escaparParams(params);
+
+const htmlBody = `
+    <div style="${HIRELY_STYLES.wrapper}">
+      <div style="${HIRELY_STYLES.header}">
+        <h1 style="${HIRELY_STYLES.headerText}">${p.empresaNombre}</h1>
+      </div>
+      <div style="${HIRELY_STYLES.body}">
+        <h2 style="${HIRELY_STYLES.h2}">Te faltan documentos por subir</h2>
+        <p style="${HIRELY_STYLES.p}">Hola ${p.candidatoNombre},</p>
+        <p style="${HIRELY_STYLES.p}">${intro}</p>
+
+        <p style="${HIRELY_STYLES.p}"><strong>Documentos pendientes:</strong></p>
+        <ul style="padding-left: 20px; margin: 12px 0 24px 0;">
+          ${listaFaltantes}
+        </ul>
+
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${p.portalUrl}" style="${HIRELY_STYLES.ctaBtn}">
+            Subir mis documentos
+          </a>
+        </div>
+
+        <p style="${HIRELY_STYLES.p}; font-size: 14px; color: #64748b;">
+          Tu link estara disponible ${p.diasRestantes} dia(s) mas.
+          Si ya subiste alguno, ignora este mensaje: puede que lo estemos revisando.
+        </p>
+
+        <hr style="${HIRELY_STYLES.hr}">
+        <p style="${HIRELY_STYLES.footer}">
+          Recordatorio automatico de ${p.empresaNombre}.
+        </p>
+      </div>
+    </div>
+  `;
+
+  const textBody =
+    `Hola ${params.candidatoNombre},\n\n${intro}\n\n` +
+    `Documentos pendientes:\n${params.documentosFaltantes.map((d) => `- ${d}`).join('\n')}\n\n` +
+    `Subelos aqui: ${params.portalUrl}\n\nTu link estara disponible ${params.diasRestantes} dia(s) mas.`;
+
+  return {
+    subject: esUltimo
+      ? `Ultimo recordatorio: documentos pendientes — ${params.vacanteTitulo}`
+      : `Recordatorio: te faltan documentos para ${params.vacanteTitulo}`,
+    htmlBody,
+    textBody,
+  };
+}
+
+/**
+ * Nuevo link del portal cuando el candidato pide renovar uno vencido.
+ *
+ * Se manda SIEMPRE al correo registrado del candidato (nunca se muestra el link
+ * nuevo en pantalla): tener un link viejo no debe alcanzar para obtener uno
+ * valido si quien lo tiene no controla ese buzon.
+ */
+export function emailLinkRenovadoTemplate(params: {
+  candidatoNombre: string;
+  empresaNombre: string;
+  vacanteTitulo: string;
+  portalUrl: string;
+  diasVigencia: number;
+}): { subject: string; htmlBody: string; textBody: string } {
+    // Copia escapada SOLO para el HTML. `subject` y `textBody` son texto
+  // plano y usan los valores originales: escaparlos mostraba entidades
+  // ("Perez &amp; Cia") en el asunto que ve el destinatario.
+  const p = escaparParams(params);
+
+const htmlBody = `
+    <div style="${HIRELY_STYLES.wrapper}">
+      <div style="${HIRELY_STYLES.header}">
+        <h1 style="${HIRELY_STYLES.headerText}">${p.empresaNombre}</h1>
+      </div>
+      <div style="${HIRELY_STYLES.body}">
+        <h2 style="${HIRELY_STYLES.h2}">Tu nuevo link para subir documentos</h2>
+        <p style="${HIRELY_STYLES.p}">Hola ${p.candidatoNombre},</p>
+        <p style="${HIRELY_STYLES.p}">
+          Solicitaste un link nuevo para completar tus documentos de
+          <strong>${p.vacanteTitulo}</strong>. Aqui esta:
+        </p>
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${p.portalUrl}" style="${HIRELY_STYLES.ctaBtn}">
+            Subir mis documentos
+          </a>
+        </div>
+        <p style="${HIRELY_STYLES.p}; font-size: 14px; color: #64748b;">
+          Este link es valido por ${p.diasVigencia} dias y reemplaza a los anteriores.
+          Los documentos que ya habias subido siguen guardados.
+        </p>
+        <hr style="${HIRELY_STYLES.hr}">
+        <p style="${HIRELY_STYLES.footer}">
+          Si no solicitaste este link, puedes ignorar este mensaje.
+        </p>
+      </div>
+    </div>
+  `;
+
+  const textBody =
+    `Hola ${params.candidatoNombre},\n\nTu nuevo link para subir documentos de ${params.vacanteTitulo}:\n${params.portalUrl}\n\n` +
+    `Valido por ${params.diasVigencia} dias. Los documentos que ya subiste siguen guardados.`;
+
+  return {
+    subject: `Tu nuevo link para subir documentos — ${params.empresaNombre}`,
+    htmlBody,
+    textBody,
   };
 }

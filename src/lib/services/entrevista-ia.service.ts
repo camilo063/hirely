@@ -2,10 +2,12 @@ import { pool } from '@/lib/db';
 import { getAppUrl } from '@/lib/utils/url';
 import { createDaptaClient } from '@/lib/integrations/dapta.client';
 import { analizarTranscripcion, calcularScoreEntrevistaIA } from './entrevista-analisis.service';
+import { transicionarEstado } from './pipeline-transicion.service';
 import type { EntrevistaIA, DaptaWebhookPayload, PreguntasEntrevistaConfig, EntrevistaIAConDetalles } from '@/lib/types/entrevista.types';
 import { PREGUNTAS_DEFAULT } from '@/lib/types/entrevista.types';
 import { UUID } from '@/lib/types/common.types';
 import { NotFoundError } from '@/lib/utils/errors';
+import { assertAplicacionDeOrg } from '@/lib/auth/authorization';
 
 /**
  * Get admin email addresses for an organization.
@@ -84,19 +86,22 @@ export async function iniciarEntrevistaIA(
 
   // 4. Create interview record
   const entrevistaResult = await pool.query(
-    `INSERT INTO entrevistas_ia (aplicacion_id, estado, preguntas_usadas)
-     VALUES ($1, 'pendiente', $2)
+    // `organization_id` es imprescindible: la vista de KPIs agrupa por el, asi
+    // que sin este campo las entrevistas creadas por el flujo actual NUNCA se
+    // contaban (el KPI quedaba en 0 permanentemente). El otro INSERT de esta
+    // misma tabla si lo rellenaba.
+    `INSERT INTO entrevistas_ia (aplicacion_id, organization_id, candidato_id, vacante_id, estado, preguntas_usadas)
+     VALUES ($1, $2, $3, $4, 'pendiente', $5)
      RETURNING id`,
-    [aplicacionId, JSON.stringify(preguntas)]
+    [aplicacionId, orgId, app.candidato_id, app.vacante_id, JSON.stringify(preguntas)]
   );
   const entrevistaId = entrevistaResult.rows[0].id;
 
   // 5. Update application state
-  await pool.query(
-    `UPDATE aplicaciones SET estado = 'entrevista_ia', updated_at = NOW()
-     WHERE id = $1 AND estado IN ('nuevo', 'en_revision', 'preseleccionado', 'revisado')`,
-    [aplicacionId]
-  );
+  await transicionarEstado(aplicacionId, 'entrevista_ia', {
+    soloDesde: ['nuevo', 'en_revision', 'preseleccionado', 'revisado'],
+    orgId,
+  });
 
   // 6. Trigger Dapta call
   const daptaClient = createDaptaClient();
@@ -241,15 +246,16 @@ export async function procesarResultadoLlamada(
     await pool.query(
       `UPDATE aplicaciones SET
          score_ia = $1,
-         estado = CASE
-           WHEN estado = 'entrevista_ia' THEN 'entrevista_humana'
-           ELSE estado
-         END,
          notas = COALESCE(notas, '') || E'\nScore Entrevista IA: ' || $4 || '/100 — ' || $2,
          updated_at = NOW()
        WHERE id = $3`,
       [scoreTotal, analisis.recomendacion, entrevista.aplicacion_id, String(scoreTotal)]
     );
+
+    await transicionarEstado(entrevista.aplicacion_id, 'entrevista_humana', {
+      soloDesde: ['entrevista_ia'],
+      orgId: entrevista.organization_id,
+    });
 
     // Recalculate score_final with all available components
     try {
@@ -402,11 +408,18 @@ export async function createEntrevistaIA(
   orgId: UUID,
   input: { aplicacion_id: UUID; candidato_id: UUID; vacante_id: UUID }
 ): Promise<EntrevistaIA> {
+  // Esta rama legacy esquivaba `iniciarEntrevistaIA`, que si valida pertenencia,
+  // e insertaba los tres UUID del body sin comprobar nada. Ademas de la fuga,
+  // provocaba una denegacion de servicio permanente: el chequeo de duplicados de
+  // `iniciarEntrevistaIA` encontraba despues la fila fantasma del atacante y la
+  // organizacion legitima no podia volver a lanzar la entrevista jamas.
+  const aplicacion = await assertAplicacionDeOrg(input.aplicacion_id, orgId);
+
   const result = await pool.query<EntrevistaIA>(
     `INSERT INTO entrevistas_ia (aplicacion_id, organization_id, candidato_id, vacante_id)
     VALUES ($1, $2, $3, $4)
     RETURNING *`,
-    [input.aplicacion_id, orgId, input.candidato_id, input.vacante_id]
+    [aplicacion.id, orgId, aplicacion.candidato_id, aplicacion.vacante_id]
   );
   return result.rows[0];
 }

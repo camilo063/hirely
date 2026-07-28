@@ -5,6 +5,7 @@ import { pool } from '@/lib/db';
 import { addDocumentoOnboarding } from '@/lib/services/onboarding.service';
 import { saveFile, validateFile } from '@/lib/utils/file-storage';
 import { resolveUrl } from '@/lib/integrations/s3';
+import { requireAdmin } from '@/lib/auth/authorization';
 
 // GET — Listar documentos de onboarding de la org
 export const maxDuration = 10;
@@ -40,6 +41,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
+    // Solo administradores: esta ruta cambia configuracion de toda la empresa.
+    await requireAdmin();
     const orgId = await getOrgId();
 
     const contentType = request.headers.get('content-type') || '';

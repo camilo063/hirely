@@ -1,6 +1,7 @@
 import { pool } from '@/lib/db';
 import type { ScoreDualResult, EvaluacionHumana } from '@/lib/types/entrevista.types';
 import { UUID } from '@/lib/types/common.types';
+import { NotFoundError } from '@/lib/utils/errors';
 
 /**
  * Scoring Dual: combines IA + Human scores.
@@ -63,7 +64,33 @@ export async function guardarEvaluacionHumana(
 ): Promise<ScoreDualResult> {
   const scoreHumano = calcularScoreHumano(evaluacion);
 
-  // 1. Save evaluation in entrevista_humana
+  // 1. Verificar pertenencia ANTES de escribir nada.
+  //
+  // El UPDATE de la evaluacion iba primero y sin filtro de organizacion, y la
+  // comprobacion de pertenencia venia despues. Como no hay transaccion (pg en
+  // autocommit), el `throw` posterior no revertia nada: una sesion de cualquier
+  // empresa podia sobrescribir la evaluacion, el score y el estado de una
+  // entrevista ajena con solo poner su id en la URL.
+  // Los pesos salen de la aplicacion y, si no los tiene, de la configuracion de
+  // la organizacion. Antes solo se miraba la aplicacion y se caia a 50/50 fijo,
+  // asi que Configuracion > Scoring era una pantalla que guardaba valores que
+  // nadie leia jamas.
+  const appResult = await pool.query(
+    `SELECT a.id, a.score_ia, a.vacante_id, a.candidato_id,
+            COALESCE(a.peso_ia,     os.peso_ia     / 100.0) AS peso_ia,
+            COALESCE(a.peso_humano, os.peso_humano / 100.0) AS peso_humano
+     FROM entrevistas_humanas eh
+     JOIN aplicaciones a ON a.id = eh.aplicacion_id
+     JOIN vacantes v ON v.id = a.vacante_id
+     LEFT JOIN org_settings os ON os.organization_id = v.organization_id
+     WHERE eh.id = $1 AND v.organization_id = $2`,
+    [entrevistaHumanaId, orgId]
+  );
+
+  if (appResult.rows.length === 0) throw new NotFoundError('Entrevista', entrevistaHumanaId);
+  const app = appResult.rows[0];
+
+  // 2. Save evaluation in entrevista_humana (ya validada la pertenencia)
   await pool.query(
     `UPDATE entrevistas_humanas SET
        evaluacion = $1,
@@ -74,28 +101,22 @@ export async function guardarEvaluacionHumana(
     [JSON.stringify(evaluacion), scoreHumano, entrevistaHumanaId]
   );
 
-  // 2. Get application and IA score
-  const appResult = await pool.query(
-    `SELECT a.id, a.score_ia, a.peso_ia, a.peso_humano, a.vacante_id, a.candidato_id
-     FROM entrevistas_humanas eh
-     JOIN aplicaciones a ON a.id = eh.aplicacion_id
-     JOIN vacantes v ON v.id = a.vacante_id
-     WHERE eh.id = $1 AND v.organization_id = $2`,
-    [entrevistaHumanaId, orgId]
-  );
-
-  if (appResult.rows.length === 0) throw new Error('Aplicación no encontrada');
-  const app = appResult.rows[0];
-
   // DB stores peso as decimal (0.50 = 50%), use directly
   const pesoIA = app.peso_ia != null ? Number(app.peso_ia) : 0.50;
   const pesoHumano = app.peso_humano != null ? Number(app.peso_humano) : 0.50;
-  const scoreIA = Number(app.score_ia) || 0;
+  // `score_ia` puede no existir todavia (el candidato aun no hizo la entrevista
+  // IA, o la organizacion no usa ese modulo). Tratarlo como 0 producia una
+  // "discrepancia significativa: IA=0, Humano=82" que no significaba nada y
+  // ademas hundia el score final.
+  const tieneScoreIA = app.score_ia !== null && app.score_ia !== undefined;
+  const scoreIA = tieneScoreIA ? Number(app.score_ia) : 0;
 
   // 3. Calculate dual score
-  const scoreFinal = Math.round((scoreIA * pesoIA) + (scoreHumano * pesoHumano));
-  const discrepancia = Math.abs(scoreIA - scoreHumano);
-  const alertaDiscrepancia = discrepancia > 30;
+  const scoreFinal = tieneScoreIA
+    ? Math.round(scoreIA * pesoIA + scoreHumano * pesoHumano)
+    : Math.round(scoreHumano); // sin componente IA, manda la evaluacion humana
+  const discrepancia = tieneScoreIA ? Math.abs(scoreIA - scoreHumano) : 0;
+  const alertaDiscrepancia = tieneScoreIA && discrepancia > 30;
 
   // 4. Save in aplicaciones
   await pool.query(
@@ -107,9 +128,23 @@ export async function guardarEvaluacionHumana(
     [scoreHumano, scoreFinal, app.id]
   );
 
-  // 4b. Recalculate score_final with all available components
+  // 4b. Recalculate score_final with all available components.
+  //
+  // Este recalculo considera tambien el score ATS y el tecnico, asi que el valor
+  // final NO es el de la linea 4. La respuesta debe devolver el valor
+  // DEFINITIVO: antes se contestaba el intermedio (se observo 42 en la respuesta
+  // y 93 en la base), y el reclutador veia un score y una alerta de discrepancia
+  // que no correspondian con lo que quedaba guardado.
+  let scoreFinalDefinitivo = scoreFinal;
   try {
     await recalcularScoreFinal(app.id);
+    const persistido = await pool.query(
+      `SELECT score_final FROM aplicaciones WHERE id = $1`,
+      [app.id]
+    );
+    if (persistido.rows[0]?.score_final != null) {
+      scoreFinalDefinitivo = Number(persistido.rows[0].score_final);
+    }
   } catch (err) {
     console.error('[Scoring Dual] Error recalculando score_final:', err);
   }
@@ -122,15 +157,15 @@ export async function guardarEvaluacionHumana(
   );
 
   const resumen = alertaDiscrepancia
-    ? `Discrepancia significativa: IA=${scoreIA}, Humano=${scoreHumano} (dif: ${discrepancia}). Score final: ${scoreFinal}`
-    : `Score final: ${scoreFinal}/100 (IA: ${scoreIA} x ${Math.round(pesoIA * 100)}% + Humano: ${scoreHumano} x ${Math.round(pesoHumano * 100)}%)`;
+    ? `Discrepancia significativa: IA=${scoreIA}, Humano=${scoreHumano} (dif: ${discrepancia}). Score final: ${scoreFinalDefinitivo}`
+    : `Score final: ${scoreFinalDefinitivo}/100 (IA: ${scoreIA} x ${Math.round(pesoIA * 100)}% + Humano: ${scoreHumano} x ${Math.round(pesoHumano * 100)}%)`;
 
   return {
     score_ia: scoreIA,
     score_humano: scoreHumano,
     peso_ia: pesoIA,
     peso_humano: pesoHumano,
-    score_final: scoreFinal,
+    score_final: scoreFinalDefinitivo,
     discrepancia,
     alerta_discrepancia: alertaDiscrepancia,
     resumen,
@@ -144,9 +179,12 @@ export async function guardarEvaluacionHumana(
  */
 export async function calculateScoreDual(orgId: UUID, aplicacionId: UUID) {
   const appResult = await pool.query(
-    `SELECT a.score_ats, a.score_ia, a.score_humano, a.score_tecnico, a.peso_ia, a.peso_humano
+    `SELECT a.score_ats, a.score_ia, a.score_humano, a.score_tecnico,
+            COALESCE(a.peso_ia,     os.peso_ia     / 100.0) AS peso_ia,
+            COALESCE(a.peso_humano, os.peso_humano / 100.0) AS peso_humano
      FROM aplicaciones a
      JOIN vacantes v ON a.vacante_id = v.id
+     LEFT JOIN org_settings os ON os.organization_id = v.organization_id
      WHERE a.id = $1 AND v.organization_id = $2`,
     [aplicacionId, orgId]
   );

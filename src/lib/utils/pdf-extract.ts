@@ -72,20 +72,41 @@ export async function pdfUrlToBase64(url: string): Promise<string> {
     }
   }
 
-  // Path local: /uploads/... o ruta relativa sin protocolo
+  // Path local. Se contemplan las dos formas de URL que produce el
+  // almacenamiento local:
+  //   - `/api/archivos/{entidad}/{org}/{id}/{fichero}`  (actual: se sirve tras
+  //     autenticacion y los ficheros viven en `.uploads/`)
+  //   - `/uploads/{...}`                                (anterior: bajo `public/`)
+  //
+  // Cuando las subidas se movieron fuera de `public/` esta funcion se quedo
+  // probando solo las rutas viejas, asi que TODO el scoring ATS y el parseo de
+  // CV fallaban con ENOENT: los candidatos entraban sin puntuar y el umbral de
+  // preseleccion quedaba inoperante.
   if (url.startsWith('/') && !url.startsWith('//')) {
     console.log(`[pdfUrlToBase64] Leyendo PDF local: ${url}`);
-    const localPath = resolve(process.cwd(), 'public', url.replace(/^\//, ''));
-    try {
-      const buffer = await readFile(localPath);
-      console.log(`[pdfUrlToBase64] PDF leido (public): ${buffer.length} bytes`);
-      return buffer.toString('base64');
-    } catch {
-      const directPath = join(process.cwd(), url);
-      const buffer = await readFile(directPath);
-      console.log(`[pdfUrlToBase64] PDF leido (cwd): ${buffer.length} bytes`);
-      return buffer.toString('base64');
+
+    const relativa = url
+      .replace(/^\/api\/archivos\//, '')
+      .replace(/^\/uploads\//, '')
+      .replace(/^\//, '');
+
+    const candidatos = [
+      resolve(process.cwd(), '.uploads', relativa),          // ubicacion actual
+      resolve(process.cwd(), 'public', 'uploads', relativa), // ubicacion anterior
+      resolve(process.cwd(), 'public', url.replace(/^\//, '')),
+      join(process.cwd(), url),
+    ];
+
+    for (const ruta of candidatos) {
+      try {
+        const buffer = await readFile(ruta);
+        console.log(`[pdfUrlToBase64] PDF leido (${ruta}): ${buffer.length} bytes`);
+        return buffer.toString('base64');
+      } catch {
+        // Se prueba la siguiente ubicacion.
+      }
     }
+    throw new Error(`[pdfUrlToBase64] No se encontro el PDF local para ${url}`);
   }
 
   // URL remota generica: https://... o http://...

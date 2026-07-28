@@ -8,6 +8,7 @@ import { RichTextEditor, RichTextEditorHandle } from '@/components/ui/rich-text-
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Eye, RotateCcw, Save, Plus, Loader2 } from 'lucide-react';
+import { sanitizarHtml } from '@/lib/utils/sanitize-html';
 import {
   VARIABLES_DISPONIBLES,
   PLANTILLA_BIENVENIDA_DEFAULT,
@@ -190,7 +191,7 @@ export function PlantillaEditor() {
           <CardContent className="p-0">
             <div
               className="p-4 bg-white"
-              dangerouslySetInnerHTML={{ __html: renderPreview() }}
+              dangerouslySetInnerHTML={{ __html: sanitizarHtml(renderPreview()) }}
             />
           </CardContent>
         </Card>

@@ -110,6 +110,7 @@ export async function enviarParaFirma(
         firma_provider = $3,
         firma_external_id = $4,
         firma_url = $5,
+        enviado_firma_at = NOW(),
         updated_at = NOW()
        WHERE id = $1 AND organization_id = $2`,
       [contratoId, orgId, providerName, firmaResult.externalId, firmaResult.signingUrl ?? null]

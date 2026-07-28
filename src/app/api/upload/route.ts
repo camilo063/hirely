@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { saveFile, FileValidationError } from '@/lib/utils/file-storage';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 /**
  * POST /api/upload — General-purpose file upload endpoint
@@ -19,6 +20,8 @@ export const maxDuration = 30;
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
+    // Escritura: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
 
     const formData = await request.formData();

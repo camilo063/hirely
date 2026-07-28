@@ -4,6 +4,7 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
 import { crearEvaluacion, enviarEvaluacion, obtenerPlantilla } from '@/lib/services/evaluacion-tecnica.service';
 import { z } from 'zod';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 const envioMasivoSchema = z.object({
   vacante_id: z.string().uuid(),
@@ -21,6 +22,8 @@ export const maxDuration = 30;
 
 export async function POST(request: NextRequest) {
   try {
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const userId = await getUserId();
     const body = await request.json();

@@ -4,6 +4,7 @@ import { getContrato, updateContrato } from '@/lib/services/contratos.service';
 import { contratoUpdateSchema } from '@/lib/validations/contrato.schema';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { resolveUrl } from '@/lib/integrations/s3';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 10;
 
@@ -36,6 +37,8 @@ export async function PUT(
 ) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const userId = await getUserId();
     const { id } = await params;

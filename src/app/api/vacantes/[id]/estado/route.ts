@@ -6,6 +6,7 @@ import { publishToLinkedIn, closeLinkedInJob, clearLinkedInJobId, getLinkedInMod
 import { isValidTransition, getTransition } from '@/lib/services/vacancy-state-machine';
 import type { VacancyEstado } from '@/lib/services/vacancy-state-machine';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 const estadoSchema = z.object({
   estado: z.enum(['borrador', 'publicada', 'pausada', 'cerrada', 'archivada']),
@@ -19,6 +20,8 @@ export async function PATCH(
 ) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const { id } = await params;
 
@@ -47,6 +50,8 @@ export async function PATCH(
       }
     }
 
+    let linkedinError: string | null = null;
+
     if (transition.linkedinAction === 'publish') {
       // If reactivating from pausada, clear old linkedin_job_id first
       if (currentEstado === 'pausada') {
@@ -59,13 +64,16 @@ export async function PATCH(
       if (configuredMode === 'deeplink' && linkedinResult.mode === 'deeplink') {
         // Expected deeplink mode — estado changes, modal will show on client
       } else if (!linkedinResult.success || (configuredMode !== 'deeplink' && linkedinResult.mode === 'deeplink')) {
-        // LinkedIn publish failed — do NOT change estado
-        const errorDetail = linkedinResult.error
+        // LinkedIn fallo, pero el estado de la vacante SI cambia.
+        //
+        // Antes se abortaba el cambio: si la integracion con Unipile devolvia
+        // 401 (credenciales caducadas, cuota, caida del proveedor), una vacante
+        // pausada no se podia reactivar y quedaba fuera del proceso hasta que
+        // alguien arreglara LinkedIn. Publicar en un canal externo es
+        // complementario; no puede secuestrar el ciclo de vida de la vacante.
+        linkedinError = linkedinResult.error
           || 'LinkedIn auto-publish fallo. Verifica la configuracion de Unipile/API.';
-        return apiResponse({
-          vacante,
-          linkedinError: errorDetail,
-        }, 200);
+        console.warn(`[Vacante ${id}] Publicacion en LinkedIn fallida, el estado cambia igual:`, linkedinError);
       }
     }
 
@@ -74,6 +82,7 @@ export async function PATCH(
 
     return apiResponse({
       vacante: updated,
+      ...(linkedinError ? { linkedinError } : {}),
       linkedin: linkedinResult,
       mode: linkedinResult?.mode || null,
       warning,

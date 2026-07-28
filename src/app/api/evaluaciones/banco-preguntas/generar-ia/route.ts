@@ -3,6 +3,7 @@ import { getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { generarPreguntasConIA } from '@/lib/services/generar-preguntas-ia.service';
 import { z } from 'zod';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 const generarPreguntasIASchema = z.object({
   categoria: z.string().min(1),
@@ -20,7 +21,9 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
-    await getOrgId(); // Validate auth
+        // Escritura: un rol de solo lectura no debe ejecutarla.
+    await requireEscritura();
+await getOrgId(); // Validate auth
     const body = await request.json();
     const validated = generarPreguntasIASchema.parse(body);
 

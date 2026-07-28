@@ -3,6 +3,7 @@ import { getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { obtenerPlantilla, actualizarPlantilla } from '@/lib/services/evaluacion-tecnica.service';
 import { plantillaUpdateSchema } from '@/lib/validations/evaluacion.schema';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 10;
 
@@ -18,6 +19,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    // Escritura: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const body = await request.json();
     const validated = plantillaUpdateSchema.parse(body);
@@ -30,6 +33,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    // Escritura: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const plantilla = await actualizarPlantilla(params.id, orgId, { estado: 'archivada' } as any);
     return apiResponse(plantilla);

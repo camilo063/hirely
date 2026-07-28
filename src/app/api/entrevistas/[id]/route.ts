@@ -19,9 +19,13 @@ export async function GET(
 
     if (tipo === 'ia') {
       const entrevista = await getEntrevistaIAReport(id, orgId);
+      // Sin fila (inexistente o de otra organizacion) la respuesta era 200 con
+      // `data:null`, que el cliente no distingue de "existe pero vacia".
+      if (!entrevista) return apiResponse({ error: 'Entrevista no encontrada' }, 404);
       return apiResponse(entrevista);
     } else {
       const entrevista = await getEntrevistaHumana(orgId, id);
+      if (!entrevista) return apiResponse({ error: 'Entrevista no encontrada' }, 404);
       return apiResponse(entrevista);
     }
   } catch (error) {

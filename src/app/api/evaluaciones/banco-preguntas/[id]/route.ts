@@ -4,6 +4,7 @@ import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { obtenerPregunta, actualizarPregunta } from '@/lib/services/banco-preguntas.service';
 import { preguntaUpdateSchema } from '@/lib/validations/evaluacion.schema';
 import { NotFoundError } from '@/lib/utils/errors';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 10;
 
@@ -20,6 +21,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    // Escritura: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const body = await request.json();
     const validated = preguntaUpdateSchema.parse(body);
@@ -32,6 +35,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    // Escritura: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const pregunta = await actualizarPregunta(params.id, orgId, { estado: 'archivada' } as any);
     return apiResponse(pregunta);

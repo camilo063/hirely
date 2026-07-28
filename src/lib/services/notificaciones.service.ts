@@ -27,7 +27,9 @@ export type TipoNotificacion =
   | 'candidato_contratado'
   | 'onboarding_email_enviado'
   | 'candidato_duplicado_alerta'
-  | 'contrato_terminado';
+  | 'contrato_terminado'
+  | 'evaluacion_tecnica_expirada'
+  | 'contrato_firma_pendiente_prolongada';
 
 export interface CrearNotificacionParams {
   organizacionId: string;
@@ -64,6 +66,8 @@ const CONFIG_DEFAULT: Record<TipoNotificacion, { inapp: boolean; browser: boolea
   onboarding_email_enviado:      { inapp: true,  browser: false, prioridad: 'media' },
   candidato_duplicado_alerta:    { inapp: true,  browser: true,  prioridad: 'alta'  },
   contrato_terminado:            { inapp: true,  browser: false, prioridad: 'media' },
+  evaluacion_tecnica_expirada:      { inapp: true,  browser: true,  prioridad: 'media' },
+  contrato_firma_pendiente_prolongada: { inapp: true,  browser: true,  prioridad: 'alta'  },
 };
 
 /**

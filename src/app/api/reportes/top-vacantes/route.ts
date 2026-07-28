@@ -10,8 +10,9 @@ export async function GET(request: NextRequest) {
   try {
     await requireAuth();
     const orgId = await getOrgId();
-    const { searchParams } = new URL(request.url);
-    const limite = parseInt(searchParams.get('limite') || '10');
+    // `limite` llega del querystring: sin acotarlo, 'abc' producia LIMIT NaN
+    // (500) y un entero enorme permitia pedir LIMIT 2000000000.
+    const limite = Math.min(Math.max(Number(request.nextUrl.searchParams.get('limite')) || 10, 1), 100);
 
     const data = await cached(
       cacheKeys.reportes(orgId, 'top-vacantes', String(limite)),

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { getCamposEvaluacion, crearCampo } from '@/lib/services/evaluacion-humana-campos.service';
+import { requireAdmin } from '@/lib/auth/authorization';
 
 export const maxDuration = 10;
 
@@ -21,6 +22,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
+    // Solo administradores: esta ruta cambia configuracion de toda la empresa.
+    await requireAdmin();
     const orgId = await getOrgId();
     const body = await request.json().catch(() => ({}));
 
