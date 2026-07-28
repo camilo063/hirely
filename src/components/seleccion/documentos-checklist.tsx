@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   Loader2, CheckCircle2, Clock, XCircle, ShieldCheck, FileText,
-  ExternalLink, Copy, Download,
+  ExternalLink, Copy, Download, Send,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +31,7 @@ export function DocumentosChecklist({ aplicacionId, portalToken, onComplete }: P
   const [rejectDialog, setRejectDialog] = useState<{ docId: string; tipo: string } | null>(null);
   const [rejectNote, setRejectNote] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [reenviando, setReenviando] = useState(false);
 
   useEffect(() => {
     fetchDocumentos();
@@ -69,6 +70,24 @@ export function DocumentosChecklist({ aplicacionId, portalToken, onComplete }: P
       toast.error('Error verificando documento');
     } finally {
       setActionLoading(null);
+    }
+  }
+
+  async function handleReenviar() {
+    setReenviando(true);
+    try {
+      const res = await fetch(`/api/documentos/${aplicacionId}/reenviar`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        toast.success('Enlace reenviado al candidato');
+      } else {
+        const mensaje = data.data?.error || data.error || 'No se pudo reenviar el enlace';
+        toast.error(mensaje);
+      }
+    } catch {
+      toast.error('Error de conexion al reenviar el enlace');
+    } finally {
+      setReenviando(false);
     }
   }
 
@@ -128,6 +147,18 @@ export function DocumentosChecklist({ aplicacionId, portalToken, onComplete }: P
               <Badge className="bg-success/15 text-success">Completos</Badge>
             ) : (
               <Badge variant="outline">{requeridosSubidos}/{requeridos.length} obligatorios</Badge>
+            )}
+            {portalUrl && !completo && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1 text-xs"
+                onClick={handleReenviar}
+                disabled={reenviando}
+              >
+                {reenviando ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                Reenviar enlace
+              </Button>
             )}
             {portalUrl && (
               <Button

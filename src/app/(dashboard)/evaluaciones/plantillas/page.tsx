@@ -84,9 +84,15 @@ export default function PlantillasPage() {
     try {
       const res = await fetch('/api/evaluaciones/plantillas');
       const data = await res.json();
-      if (data.success) setPlantillas(data.data || []);
-    } catch {
-      toast.error('Error cargando plantillas');
+      if (data.success) {
+        setPlantillas(data.data || []);
+      } else {
+        console.error('[Plantillas] Error del servidor:', data.error);
+        toast.error(data.error || 'Error cargando plantillas');
+      }
+    } catch (error) {
+      console.error('[Plantillas] Error de red o respuesta invalida:', error);
+      toast.error('Error cargando plantillas. Revisa tu conexion o intenta de nuevo.');
     } finally {
       setLoading(false);
     }

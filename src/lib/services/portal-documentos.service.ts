@@ -10,12 +10,13 @@
 import { pool } from '@/lib/db';
 import { randomBytes } from 'crypto';
 import { getAppUrl } from '@/lib/utils/url';
-import { sendEmail } from './email.service';
-import { getChecklistAplicacion, evaluarCompletitud } from './seleccion.service';
+import { sendEmail, enviarEmail } from './email.service';
+import { getChecklistAplicacion, evaluarCompletitud, getChecklistDocumentos } from './seleccion.service';
 import {
   emailRecordatorioDocumentosTemplate,
   emailLinkRenovadoTemplate,
 } from '@/lib/utils/email-templates';
+import { NotFoundError, ValidationError } from '@/lib/utils/errors';
 import type { DocumentoCandidatoRow } from '@/lib/types/seleccion.types';
 
 /** Vigencia de un token de portal, en dias. */
@@ -241,6 +242,105 @@ function ofuscarEmail(email: string): string {
   if (!dominio) return '***';
   if (usuario.length <= 2) return `${usuario[0]}***@${dominio}`;
   return `${usuario[0]}${'*'.repeat(Math.min(usuario.length - 2, 5))}${usuario[usuario.length - 1]}@${dominio}`;
+}
+
+/**
+ * Reenvia el link del portal de documentos a peticion del reclutador.
+ *
+ * A diferencia de `renovarTokenPortal` (publico, dispara el propio candidato
+ * con un token vencido como credencial), esta funcion la invoca un reclutador
+ * autenticado sobre una aplicacion puntual: reutiliza el token vigente si hay
+ * uno (no invalida nada), o emite uno nuevo si no existe. Usa `enviarEmail`
+ * directamente (no el wrapper `sendEmail` que descarta el motivo del fallo)
+ * para poder devolverle al reclutador por que no se pudo enviar, en vez de un
+ * "fire and forget" silencioso.
+ */
+export async function reenviarEnlacePortal(
+  aplicacionId: string,
+  orgId: string
+): Promise<{ enviado: boolean; error?: string }> {
+  const appResult = await pool.query(
+    `SELECT a.estado,
+            c.nombre as candidato_nombre, c.apellido as candidato_apellido, c.email as candidato_email,
+            v.titulo as vacante_titulo, o.name as org_nombre
+     FROM aplicaciones a
+     JOIN candidatos c ON c.id = a.candidato_id
+     JOIN vacantes v ON v.id = a.vacante_id
+     JOIN organizations o ON o.id = v.organization_id
+     WHERE a.id = $1 AND v.organization_id = $2`,
+    [aplicacionId, orgId]
+  );
+  if (appResult.rows.length === 0) throw new NotFoundError('Aplicacion', aplicacionId);
+  const app = appResult.rows[0];
+
+  if (!['seleccionado', 'documentos_pendientes'].includes(app.estado)) {
+    throw new ValidationError(
+      `No aplica: la aplicacion esta en estado "${app.estado}", no esta esperando documentos.`
+    );
+  }
+
+  // Reusa el token vigente (mismo criterio que seleccionarCandidato); si no
+  // hay ninguno usable, emite uno nuevo revocando los anteriores.
+  const tokenVigente = await pool.query(
+    `SELECT token, expires_at FROM portal_tokens
+     WHERE aplicacion_id = $1 AND revocado_at IS NULL AND expires_at > NOW()
+     ORDER BY created_at DESC LIMIT 1`,
+    [aplicacionId]
+  );
+
+  let portalToken: string = tokenVigente.rows[0]?.token;
+  let expiresAt: Date = tokenVigente.rows[0]?.expires_at;
+
+  if (!portalToken) {
+    portalToken = randomBytes(32).toString('hex');
+    expiresAt = new Date(Date.now() + DIAS_VIGENCIA_TOKEN * 24 * 60 * 60 * 1000);
+    await pool.query(
+      `UPDATE portal_tokens SET revocado_at = NOW() WHERE aplicacion_id = $1 AND revocado_at IS NULL`,
+      [aplicacionId]
+    );
+    await pool.query(
+      `INSERT INTO portal_tokens (aplicacion_id, token, expires_at) VALUES ($1, $2, $3)`,
+      [aplicacionId, portalToken, expiresAt]
+    );
+    await pool.query(`UPDATE aplicaciones SET portal_token = $2 WHERE id = $1`, [aplicacionId, portalToken]);
+  }
+
+  const { documentos } = await getChecklistDocumentos(aplicacionId, orgId);
+  const documentosFaltantes = documentos
+    .filter((d) => d.requerido && d.estado !== 'verificado' && d.estado !== 'subido')
+    .map((d) => d.label);
+
+  const portalUrl = `${getAppUrl()}/portal/documentos/${portalToken}`;
+  const diasRestantes = Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+
+  const emailData = emailRecordatorioDocumentosTemplate({
+    candidatoNombre: `${app.candidato_nombre} ${app.candidato_apellido || ''}`.trim(),
+    empresaNombre: app.org_nombre,
+    vacanteTitulo: app.vacante_titulo,
+    documentosFaltantes,
+    portalUrl,
+    numeroRecordatorio: 1,
+    diasRestantes,
+  });
+
+  const resultado = await enviarEmail({
+    to: app.candidato_email,
+    subject: emailData.subject,
+    html: emailData.htmlBody,
+  });
+
+  if (!resultado.success) {
+    return { enviado: false, error: resultado.error || 'No se pudo enviar el correo' };
+  }
+
+  await pool.query(`UPDATE portal_tokens SET enviado_at = NOW() WHERE token = $1`, [portalToken]);
+  await pool.query(
+    `INSERT INTO activity_log (organization_id, entity_type, entity_id, action, details)
+     VALUES ($1, 'aplicacion', $2, 'reenvio_manual_portal', $3)`,
+    [orgId, aplicacionId, JSON.stringify({ email: app.candidato_email })]
+  );
+
+  return { enviado: true };
 }
 
 export interface ResumenRecordatorios {
