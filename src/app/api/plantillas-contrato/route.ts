@@ -3,6 +3,8 @@ import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { listPlantillas, createPlantilla } from '@/lib/services/contratos.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { ValidationError } from '@/lib/utils/errors';
+import { requireEscritura } from '@/lib/auth/authorization';
+import { sanitizarHtml } from '@/lib/utils/sanitize-html';
 
 export const maxDuration = 10;
 
@@ -20,6 +22,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const body = await request.json();
 
@@ -30,7 +34,8 @@ export async function POST(request: NextRequest) {
     const plantilla = await createPlantilla(orgId, {
       nombre: body.nombre,
       tipo: body.tipo,
-      contenido_html: body.contenido_html,
+      // Se sanea al guardar: este HTML se pinta luego con dangerouslySetInnerHTML.
+      contenido_html: sanitizarHtml(body.contenido_html),
       variables: body.variables || [],
     });
     return apiResponse(plantilla, 201);

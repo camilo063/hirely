@@ -4,6 +4,7 @@ import { listVacantes, createVacante } from '@/lib/services/vacantes.service';
 import { vacanteCreateSchema } from '@/lib/validations/vacante.schema';
 import type { CreateVacanteInput } from '@/lib/types/vacante.types';
 import { apiResponse, apiError, paginatedResponse } from '@/lib/utils/api-response';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 10;
 
@@ -20,8 +21,9 @@ export async function GET(request: NextRequest) {
     };
 
     const pagination = {
-      page: parseInt(searchParams.get('page') || '1'),
-      limit: parseInt(searchParams.get('limit') || '20'),
+      // `parseInt('abc')` es NaN y terminaba en `OFFSET NaN` -> 500.
+      page: Math.max(1, Number(searchParams.get('page')) || 1),
+      limit: Math.min(Math.max(Number(searchParams.get('limit')) || 20, 1), 100),
     };
 
     const result = await listVacantes(orgId, filters, pagination);
@@ -34,6 +36,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const userId = await getUserId();
 

@@ -18,6 +18,7 @@ export enum EstadoAplicacion {
   REVISADO = 'revisado',
   PRESELECCIONADO = 'preseleccionado',
   ENTREVISTA_IA = 'entrevista_ia',
+  PRUEBA_TECNICA = 'prueba_tecnica',
   ENTREVISTA_HUMANA = 'entrevista_humana',
   EVALUADO = 'evaluado',
   SELECCIONADO = 'seleccionado',

@@ -4,6 +4,7 @@ import { getVacante } from '@/lib/services/vacantes.service';
 import { publishToLinkedIn, getLinkedInMode } from '@/lib/services/linkedin-publish.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { ValidationError } from '@/lib/utils/errors';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 30;
 
@@ -13,6 +14,8 @@ export async function POST(
 ) {
   try {
     await requireAuth();
+    // Escritura: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const { id } = await params;
 

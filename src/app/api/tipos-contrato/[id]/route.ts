@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { getTipoContrato, updateTipoContrato, deleteTipoContrato } from '@/lib/services/tipos-contrato.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 10;
 
@@ -27,6 +28,8 @@ export async function PUT(
 ) {
   try {
     await requireAuth();
+    // Escritura: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const { id } = await params;
     const body = await request.json();
@@ -43,6 +46,8 @@ export async function DELETE(
 ) {
   try {
     await requireAuth();
+    // Escritura: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const { id } = await params;
     await deleteTipoContrato(orgId, id);

@@ -9,6 +9,7 @@
  */
 
 import { resendClient, EMAIL_FROM } from '@/lib/integrations/resend';
+import { escaparHtml } from '@/lib/utils/sanitize-html';
 
 interface EnviarEmailParams {
   to: string | string[];
@@ -117,19 +118,24 @@ export async function enviarInvitacionEntrevista(
   entrevistadorNombre: string,
   agendamientoUrl?: string
 ): Promise<boolean> {
+  const nombreSeguro = escaparHtml(candidatoNombre);
+  const vacanteSegura = escaparHtml(vacanteTitulo);
+  const empresaSegura = escaparHtml(empresaNombre);
+  const entrevistadorSeguro = escaparHtml(entrevistadorNombre);
+
   const htmlBody = `
     <div style="font-family: Inter, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       <div style="background: #0A1F3F; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
         <h1 style="color: white; margin: 0; font-size: 24px;">Hirely</h1>
       </div>
       <div style="background: white; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
-        <h2 style="color: #0A1F3F; margin-top: 0;">Hola, ${candidatoNombre}!</h2>
+        <h2 style="color: #0A1F3F; margin-top: 0;">Hola, ${nombreSeguro}!</h2>
         <p style="color: #374151; line-height: 1.6;">
-          Hemos revisado tu perfil para la posicion de <strong>${vacanteTitulo}</strong> en
-          <strong>${empresaNombre}</strong> y nos encantaria conocerte mejor.
+          Hemos revisado tu perfil para la posicion de <strong>${vacanteSegura}</strong> en
+          <strong>${empresaSegura}</strong> y nos encantaria conocerte mejor.
         </p>
         <p style="color: #374151; line-height: 1.6;">
-          Queremos invitarte a una entrevista con <strong>${entrevistadorNombre}</strong>.
+          Queremos invitarte a una entrevista con <strong>${entrevistadorSeguro}</strong>.
         </p>
         ${agendamientoUrl ? `
         <div style="text-align: center; margin: 30px 0;">
@@ -147,7 +153,7 @@ export async function enviarInvitacionEntrevista(
         `}
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
         <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-          Este email fue enviado por ${empresaNombre} a traves de Hirely.
+          Este email fue enviado por ${empresaSegura} a traves de Hirely.
         </p>
       </div>
     </div>
@@ -174,9 +180,9 @@ export async function sendInvitacionEntrevista(
     to: candidatoEmail,
     subject: `Invitacion a entrevista ${tipoLabel} - ${vacanteTitle}`,
     htmlBody: `
-      <h2>Hola ${candidatoNombre},</h2>
-      <p>Te invitamos a una entrevista ${tipoLabel} para la posicion de <strong>${vacanteTitle}</strong>.</p>
-      <p><strong>Fecha:</strong> ${fechaProgramada}</p>
+      <h2>Hola ${escaparHtml(candidatoNombre)},</h2>
+      <p>Te invitamos a una entrevista ${tipoLabel} para la posicion de <strong>${escaparHtml(vacanteTitle)}</strong>.</p>
+      <p><strong>Fecha:</strong> ${escaparHtml(fechaProgramada)}</p>
       ${callUrl ? `<p><strong>Link:</strong> <a href="${callUrl}">${callUrl}</a></p>` : ''}
       <p>Saludos,<br/>Equipo de Reclutamiento</p>
     `,
@@ -193,9 +199,9 @@ export async function sendBienvenida(
     to: candidatoEmail,
     subject: `Bienvenido al equipo! - ${cargo}`,
     htmlBody: `
-      <h2>Felicidades ${candidatoNombre}!</h2>
-      <p>Nos complace darte la bienvenida como <strong>${cargo}</strong>.</p>
-      <p>Tu fecha de inicio es el <strong>${fechaInicio}</strong>.</p>
+      <h2>Felicidades ${escaparHtml(candidatoNombre)}!</h2>
+      <p>Nos complace darte la bienvenida como <strong>${escaparHtml(cargo)}</strong>.</p>
+      <p>Tu fecha de inicio es el <strong>${escaparHtml(fechaInicio)}</strong>.</p>
       <p>Saludos,<br/>Equipo de Recursos Humanos</p>
     `,
   });
@@ -210,7 +216,7 @@ export async function sendContratoParaFirma(
     to: candidatoEmail,
     subject: 'Tu contrato esta listo para firmar',
     htmlBody: `
-      <h2>Hola ${candidatoNombre},</h2>
+      <h2>Hola ${escaparHtml(candidatoNombre)},</h2>
       <p>Tu contrato de trabajo esta listo para ser firmado electronicamente.</p>
       <p><a href="${firmaUrl}" style="background-color: #00BCD4; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Firmar contrato</a></p>
       <p>Saludos,<br/>Equipo de Recursos Humanos</p>

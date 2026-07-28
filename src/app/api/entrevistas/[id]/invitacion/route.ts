@@ -3,6 +3,8 @@ import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
 import { enviarInvitacionEntrevista } from '@/lib/services/email.service';
+import { requireEscritura } from '@/lib/auth/authorization';
+import { NotFoundError, ValidationError } from '@/lib/utils/errors';
 
 // POST /api/entrevistas/[id]/invitacion — Send interview invitation email
 export const maxDuration = 30;
@@ -13,6 +15,8 @@ export async function POST(
 ) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const { id } = await params;
     const body = await request.json();
@@ -35,14 +39,14 @@ export async function POST(
     );
 
     if (result.rows.length === 0) {
-      return apiError(new Error('Entrevista no encontrada'));
+      return apiError(new NotFoundError('Entrevista', id));
     }
 
     const entrevista = result.rows[0];
     const candidatoEmail = entrevista.candidato_email;
 
     if (!candidatoEmail) {
-      return apiError(new Error('El candidato no tiene email registrado'));
+      return apiError(new ValidationError('El candidato no tiene email registrado'));
     }
 
     // Update agendamiento_url if provided
@@ -55,7 +59,9 @@ export async function POST(
 
     // Send email
     const candidatoNombre = `${entrevista.candidato_nombre} ${entrevista.candidato_apellido || ''}`.trim();
-    await enviarInvitacionEntrevista(
+    // El helper devuelve un booleano: ignorarlo marcaba la invitacion como
+    // enviada y respondia {sent:true} aunque el proveedor la hubiera rechazado.
+    const enviado = await enviarInvitacionEntrevista(
       candidatoNombre,
       candidatoEmail,
       entrevista.vacante_titulo,
@@ -63,6 +69,13 @@ export async function POST(
       entrevista.entrevistador_nombre,
       body.agendamiento_url || entrevista.agendamiento_url
     );
+
+    if (!enviado) {
+      return apiResponse(
+        { sent: false, email: candidatoEmail, error: 'No se pudo enviar la invitacion. Revisa la configuracion de correo.' },
+        502
+      );
+    }
 
     // Update email_invitacion_enviado flag and estado
     await pool.query(

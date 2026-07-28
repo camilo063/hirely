@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Printer, Download, Send, Loader2, Eye } from 'lucide-react';
 import { ContratoConDetalles, ESTADO_CONTRATO_LABELS, EstadoContrato } from '@/lib/types/contrato.types';
 import { useTiposContrato } from '@/hooks/useTiposContrato';
+import { sanitizarHtml } from '@/lib/utils/sanitize-html';
 
 interface Props {
   contrato: ContratoConDetalles;
@@ -168,7 +169,7 @@ export function ContratoPreview({ contrato, onEstadoChange }: Props) {
           {contrato.contenido_html ? (
             <div
               className="border rounded-lg p-8 bg-white min-h-[600px] shadow-inner"
-              dangerouslySetInnerHTML={{ __html: contrato.contenido_html }}
+              dangerouslySetInnerHTML={{ __html: sanitizarHtml(contrato.contenido_html) }}
             />
           ) : (
             <div className="border rounded-lg p-8 bg-muted/20 min-h-[200px] flex items-center justify-center">

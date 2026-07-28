@@ -3,6 +3,7 @@ import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
 import { resolveUrl } from '@/lib/integrations/s3';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { requireAdmin } from '@/lib/auth/authorization';
 
 async function formatOrg(row: { name: string; logo_url: string | null; config_empresa: Record<string, string> | null }) {
   const logoUrl = row.logo_url || '';
@@ -41,6 +42,8 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   try {
     await requireAuth();
+    // Solo administradores: esta ruta cambia configuracion de toda la empresa.
+    await requireAdmin();
     const orgId = await getOrgId();
     const body = await request.json();
 

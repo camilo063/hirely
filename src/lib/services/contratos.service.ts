@@ -8,6 +8,9 @@ import {
 import { PLANTILLAS_CONTRATO_DEFAULT, renderPlantillaContrato } from '../utils/plantillas-contrato-default';
 import { NotFoundError } from '../utils/errors';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
+import { assertAplicacionDeOrg } from '@/lib/auth/authorization';
+import { sanitizarHtml } from '@/lib/utils/sanitize-html';
+import { ValidationError } from '@/lib/utils/errors';
 
 // ─── LIST / GET ──────────────────────────────────
 
@@ -38,8 +41,8 @@ export async function listContratos(
       c.nombre as candidato_nombre, COALESCE(c.apellido, '') as candidato_apellido, c.email as candidato_email,
       v.titulo as vacante_titulo
     FROM contratos ct
-    LEFT JOIN candidatos c ON ct.candidato_id = c.id
-    LEFT JOIN vacantes v ON ct.vacante_id = v.id
+    LEFT JOIN candidatos c ON ct.candidato_id = c.id AND c.organization_id = ct.organization_id
+    LEFT JOIN vacantes v ON ct.vacante_id = v.id AND v.organization_id = ct.organization_id
     WHERE ${conditions.join(' AND ')}
     ORDER BY ct.created_at DESC`,
     params
@@ -54,9 +57,9 @@ export async function getContrato(orgId: UUID, contratoId: UUID): Promise<Contra
       v.titulo as vacante_titulo,
       pc.contenido_html as plantilla_html
     FROM contratos ct
-    LEFT JOIN candidatos c ON ct.candidato_id = c.id
-    LEFT JOIN vacantes v ON ct.vacante_id = v.id
-    LEFT JOIN plantillas_contrato pc ON pc.id = ct.plantilla_id
+    LEFT JOIN candidatos c ON ct.candidato_id = c.id AND c.organization_id = ct.organization_id
+    LEFT JOIN vacantes v ON ct.vacante_id = v.id AND v.organization_id = ct.organization_id
+    LEFT JOIN plantillas_contrato pc ON pc.id = ct.plantilla_id AND pc.organization_id = ct.organization_id
     WHERE ct.id = $1 AND ct.organization_id = $2`,
     [contratoId, orgId]
   );
@@ -166,19 +169,20 @@ export async function createContrato(
   try {
     await client.query('BEGIN');
 
-    // Resolve candidato_id and vacante_id from aplicacion if not provided
-    let candidatoId = input.candidato_id;
-    let vacanteId = input.vacante_id;
-    if (!candidatoId || !vacanteId) {
-      const appResult = await client.query(
-        'SELECT candidato_id, vacante_id FROM aplicaciones WHERE id = $1',
-        [input.aplicacion_id]
-      );
-      if (appResult.rows.length > 0) {
-        candidatoId = candidatoId || appResult.rows[0].candidato_id;
-        vacanteId = vacanteId || appResult.rows[0].vacante_id;
-      }
-    }
+    // Resolve candidato_id and vacante_id from the aplicacion.
+    //
+    // Antes esto era el "valido pero no aborto" en su forma mas pura: el SELECT
+    // no filtraba por organizacion y el `if (rows.length > 0)` no tenia `else`,
+    // asi que una aplicacion ajena simplemente seguia adelante. Peor aun,
+    // `candidato_id` y `vacante_id` podian venir del body y se insertaban sin
+    // comprobar nada. Con eso se creaba un contrato propio apuntando al candidato
+    // de otra empresa, y de ahi salian su nombre y su email por los JOIN, un
+    // registro de onboarding cruzado, y un envio a firma real a su correo.
+    //
+    // Ahora los ids SIEMPRE se derivan de la aplicacion verificada.
+    const aplicacion = await assertAplicacionDeOrg(input.aplicacion_id, orgId, client);
+    const candidatoId = aplicacion.candidato_id;
+    const vacanteId = aplicacion.vacante_id;
 
     const tipo = input.tipo || 'laboral';
 
@@ -189,14 +193,21 @@ export async function createContrato(
         'SELECT * FROM plantillas_contrato WHERE id = $1 AND organization_id = $2',
         [input.plantilla_id, orgId]
       );
-      if (tplResult.rows.length > 0) {
-        htmlContent = renderPlantillaContrato(tplResult.rows[0].contenido_html, input.datos as Record<string, unknown>);
+      // Sin este `else` quedaba otra vez el "valido pero no aborto": una
+      // plantilla de otra organizacion no resolvia, el contrato se generaba en
+      // silencio con la plantilla generica —no la que el reclutador creia estar
+      // usando— y la referencia cruzada se guardaba igual en la BD.
+      if (tplResult.rows.length === 0) {
+        throw new NotFoundError('Plantilla', input.plantilla_id);
       }
+      // Se sanea al guardar: la plantilla puede traer HTML arbitrario y este
+      // contenido se pinta despues con dangerouslySetInnerHTML.
+      htmlContent = sanitizarHtml(renderPlantillaContrato(tplResult.rows[0].contenido_html, input.datos as Record<string, unknown>));
     }
     if (!htmlContent) {
       const defaultTpl = PLANTILLAS_CONTRATO_DEFAULT[tipo as TipoContrato] || PLANTILLAS_CONTRATO_DEFAULT['laboral'];
       if (defaultTpl) {
-        htmlContent = renderPlantillaContrato(defaultTpl.contenido_html, input.datos as Record<string, unknown>);
+        htmlContent = sanitizarHtml(renderPlantillaContrato(defaultTpl.contenido_html, input.datos as Record<string, unknown>));
       }
     }
 
@@ -286,8 +297,12 @@ export async function updateContrato(
 
     const htmlContent = input.contenido_html || input.html_content;
     if (htmlContent) {
+      // Unico camino de escritura de `contenido_html` sin sanear: createContrato
+      // y regenerarHtml ya pasan por sanitizarHtml antes de persistir, y este
+      // valor se pinta luego con dangerouslySetInnerHTML (contrato-preview.tsx)
+      // y se inyecta crudo en el iframe de impresion y en la descarga .html.
       fields.push(`contenido_html = $${paramIndex++}`);
-      params.push(htmlContent);
+      params.push(sanitizarHtml(htmlContent));
     }
 
     if (input.estado) {
@@ -378,11 +393,25 @@ export async function regenerarHtml(
     }
   }
   if (!template) {
-    const defaultTpl = PLANTILLAS_CONTRATO_DEFAULT[contrato.tipo as TipoContrato];
+    // Mismo fallback que createContrato. Sin el, un contrato con `tipo`
+    // 'indefinido' (que es lo que hereda de la vacante y NO existe en
+    // PLANTILLAS_CONTRATO_DEFAULT) dejaba `template` vacio, el HTML salia vacio
+    // y `updateContrato` lo descartaba por falsy: regenerar creaba una version
+    // nueva sin cambiar nada, y el contrato seguia sin NIT ni representante
+    // legal aunque la configuracion de empresa estuviera completa.
+    const defaultTpl =
+      PLANTILLAS_CONTRATO_DEFAULT[contrato.tipo as TipoContrato] ||
+      PLANTILLAS_CONTRATO_DEFAULT['laboral'];
     if (defaultTpl) template = defaultTpl.contenido_html;
   }
 
-  const htmlContent = template ? renderPlantillaContrato(template, datos as Record<string, unknown>) : '';
+  if (!template) {
+    throw new ValidationError(
+      'No hay plantilla disponible para regenerar este contrato. Asocia una plantilla al tipo de contrato.'
+    );
+  }
+
+  const htmlContent = sanitizarHtml(renderPlantillaContrato(template, datos as Record<string, unknown>));
 
   return updateContrato(orgId, contratoId, userId, {
     datos: datos as Partial<DatosContrato>,
@@ -470,10 +499,13 @@ export async function updatePlantilla(
 }
 
 export async function deletePlantilla(orgId: UUID, plantillaId: UUID): Promise<void> {
-  await pool.query(
+  const result = await pool.query(
     'UPDATE plantillas_contrato SET is_active = false, updated_at = NOW() WHERE id = $1 AND organization_id = $2',
     [plantillaId, orgId]
   );
+  // Sin esto, borrar un id inexistente o de otra organizacion respondia
+  // {deleted:true} 200 igual: el usuario creia haber borrado algo que sigue ahi.
+  if (result.rowCount === 0) throw new NotFoundError('Plantilla', plantillaId);
 }
 
 // ─── LEGACY COMPAT ───────────────────────────────

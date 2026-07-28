@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
+import { apiError } from '@/lib/utils/api-response';
 
 export const maxDuration = 10;
 
@@ -13,8 +14,9 @@ export async function GET(request: NextRequest) {
     const tipo = searchParams.get('tipo');
     const soloNoLeidas = searchParams.get('no_leidas') === 'true';
     const busqueda = searchParams.get('q');
-    const pagina = parseInt(searchParams.get('pagina') ?? '1');
-    const porPagina = Math.min(parseInt(searchParams.get('por_pagina') ?? '20'), 100);
+    // `parseInt('abc')` es NaN y acababa en `OFFSET NaN` -> 500.
+    const pagina = Math.max(1, Number(searchParams.get('pagina')) || 1);
+    const porPagina = Math.min(Math.max(Number(searchParams.get('por_pagina')) || 20, 1), 100);
     const offset = (pagina - 1) * porPagina;
 
     const conditions: string[] = ['n.organization_id = $1'];
@@ -73,7 +75,9 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('[GET /api/notificaciones]', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+    // `apiError` traduce UnauthorizedError -> 401. Con el 500 fijo, el cliente
+    // no distinguia 'sesion caducada' de 'roto' y no relanzaba el login.
+    return apiError(error);
   }
 }
 
@@ -107,6 +111,8 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true, no_leidas: rows[0].no_leidas });
   } catch (error) {
     console.error('[PATCH /api/notificaciones]', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+    // `apiError` traduce UnauthorizedError -> 401. Con el 500 fijo, el cliente
+    // no distinguia 'sesion caducada' de 'roto' y no relanzaba el login.
+    return apiError(error);
   }
 }

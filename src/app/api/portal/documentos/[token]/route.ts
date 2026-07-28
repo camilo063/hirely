@@ -12,7 +12,8 @@ export async function GET(
 ) {
   try {
     const { token } = await params;
-    const data = await getPortalData(token);
+    // true: esta es la unica ruta donde el candidato realmente abre el portal.
+    const data = await getPortalData(token, true);
 
     if (!data) {
       return NextResponse.json(
@@ -37,7 +38,11 @@ export async function GET(
           url: doc.url ? await resolveUrl(doc.url as string) : doc.url,
         }))
       );
-      return NextResponse.json({ success: true, data: { ...data, documentos: documentosResolved } });
+      // `aplicacion_id` lo necesitan los llamadores internos (presign, confirm),
+      // pero no el navegador del candidato: se retira de la respuesta publica.
+      const { aplicacion_id: _interno, ...publico } = data as Record<string, unknown>;
+      void _interno;
+      return NextResponse.json({ success: true, data: { ...publico, documentos: documentosResolved } });
     }
 
     return NextResponse.json({ success: true, data });

@@ -43,7 +43,12 @@ export async function POST(
     );
     const orgId = orgResult.rows[0]?.organization_id;
 
-    // Save file to storage
+    // Save file to storage. Igual que en presign, el archivo se nombra por
+    // documento para que una resubida reemplace la version anterior.
+    // La clave del archivo se deriva del `tipo`, NUNCA del `documento_id` que
+    // manda el cliente: con ese valor libre, dos documentos distintos podian
+    // apuntar al mismo fichero (el segundo pisaba al primero) y un documento ya
+    // aprobado se destruia subiendo otro con su mismo id.
     const { url } = await saveFile(file, aplicacionId, tipo, orgId, 'documentos');
 
     // Update DB

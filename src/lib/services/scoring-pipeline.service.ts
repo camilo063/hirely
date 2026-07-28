@@ -2,6 +2,7 @@ import { pool } from '@/lib/db';
 import { parseCVFromPDF, parseCVFromLinkedIn } from './cv-parser.service';
 import { calculateATSScore } from './scoring-ats.service';
 import { pdfUrlToBase64 } from '@/lib/utils/pdf-extract';
+import { transicionarEstado } from './pipeline-transicion.service';
 import type { ATSScoreResult } from '@/lib/types/scoring.types';
 
 /**
@@ -124,34 +125,41 @@ export async function runScoringPipeline(
     ? `Score ATS: ${scoreResult.score_total}/100 — ${scoreResult.recomendacion.toUpperCase()}`
     : `Descartado por score ATS: ${scoreResult.score_total}/100 (minimo: ${scoreResult.score_minimo})`;
 
-  await pool.query(
+  const guardado = await pool.query(
     `UPDATE aplicaciones SET
        score_ats = $1,
        score_ats_breakdown = $2,
        score_ats_resumen = $3,
        scored_at = $4,
        score_ats_error = NULL,
-       estado = CASE
-         WHEN estado = 'nuevo' THEN $5
-         ELSE estado
-       END,
        notas = CASE
-         WHEN notas IS NULL OR notas = '' THEN $6
-         ELSE notas || E'\n' || $6
+         WHEN notas IS NULL OR notas = '' THEN $5
+         ELSE notas || E'\n' || $5
        END,
        updated_at = NOW()
-     WHERE vacante_id = $7 AND candidato_id = $8`,
+     WHERE vacante_id = $6 AND candidato_id = $7
+     RETURNING id`,
     [
       scoreResult.score_total,
       JSON.stringify(scoreResult.breakdown),
       scoreResult.resumen,
       scoreResult.scored_at,
-      nuevoEstado,
       nota,
       vacanteId,
       candidatoId,
     ]
   );
+
+  // La transicion va aparte del guardado del score para que `estados_completados`
+  // quede registrado. Antes el `CASE WHEN estado = 'nuevo'` avanzaba el pipeline
+  // sin dejar historial y trancaba las transiciones posteriores.
+  const aplicacionIdScored: string | undefined = guardado.rows[0]?.id;
+  if (aplicacionIdScored) {
+    await transicionarEstado(aplicacionIdScored, nuevoEstado, {
+      soloDesde: ['nuevo'],
+      orgId,
+    });
+  }
   console.log(`[Scoring] Score guardado en BD (estado=${nuevoEstado}) en ${Date.now() - t0}ms`);
 
   // 4b. Recalculate score_final with all available components

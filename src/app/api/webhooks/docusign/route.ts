@@ -1,13 +1,26 @@
 import { NextRequest } from 'next/server';
 import { pool } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { transicionarEstado } from '@/lib/services/pipeline-transicion.service';
+import { verificarFirmaHmac, extraerFirma } from '@/lib/integrations/webhook-signature';
 
 export const maxDuration = 30;
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    console.log('[Webhook DocuSign] Received:', JSON.stringify(body));
+    const rawBody = await request.text();
+    const verificacion = verificarFirmaHmac(
+      rawBody,
+      extraerFirma(request.headers),
+      process.env.DOCUSIGN_WEBHOOK_SECRET
+    );
+    if (!verificacion.valido) {
+      console.warn('[Webhook DocuSign] Rechazado:', verificacion.motivo);
+      return apiResponse({ received: true, processed: false }, 401);
+    }
+
+    const body = JSON.parse(rawBody);
+    console.log('[Webhook DocuSign] Received:', rawBody.substring(0, 500));
 
     const { envelope_id, event, completed_at } = body;
 
@@ -40,11 +53,10 @@ export async function POST(request: NextRequest) {
         'SELECT aplicacion_id FROM contratos WHERE id = $1',
         [id]
       );
-      if (contrato.rows[0]) {
-        await pool.query(
-          `UPDATE aplicaciones SET estado = 'contratado', updated_at = NOW() WHERE id = $1`,
-          [contrato.rows[0].aplicacion_id]
-        );
+      if (contrato.rows[0]?.aplicacion_id) {
+        await transicionarEstado(contrato.rows[0].aplicacion_id, 'contratado', {
+          orgId: organization_id,
+        });
       }
     } else if (event === 'declined') {
       await pool.query(

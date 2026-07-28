@@ -2,8 +2,9 @@ import { pool } from '@/lib/db';
 import { sendEmail } from './email.service';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
 import { UUID } from '@/lib/types/common.types';
-import { DocumentoCandidato } from '@/lib/types/contrato.types';
 import { NotFoundError } from '@/lib/utils/errors';
+import { transicionarEstado } from './pipeline-transicion.service';
+import { escaparHtml } from '@/lib/utils/sanitize-html';
 import type {
   OnboardingConfig,
   OnboardingCandidato,
@@ -50,16 +51,28 @@ export async function iniciarOnboarding(params: {
     if (appResult.rows.length === 0) throw new Error('Aplicación no encontrada');
     const app = appResult.rows[0];
 
-    if (app.estado !== 'seleccionado') {
-      throw new Error(`Solo se puede contratar candidatos en estado "seleccionado". Estado actual: ${app.estado}`);
+    // El flujo real llega a la contratacion despues del portal de documentos
+    // (seleccionado -> documentos_pendientes -> documentos_completos), no
+    // directamente desde 'seleccionado'. Exigir solo 'seleccionado' hacia que
+    // esta funcion lanzara siempre en el camino normal y el onboarding nunca
+    // quedara registrado (el llamador se lo tragaba como error no bloqueante).
+    const ESTADOS_CONTRATABLES = ['seleccionado', 'documentos_pendientes', 'documentos_completos'];
+    if (!ESTADOS_CONTRATABLES.includes(app.estado) && app.estado !== 'contratado') {
+      throw new Error(
+        `Solo se puede contratar candidatos que ya fueron seleccionados. Estado actual: ${app.estado}`
+      );
     }
 
     // 2. Update application to contratado
     await client.query(
-      `UPDATE aplicaciones SET estado = 'contratado', fecha_inicio_tentativa = $2, updated_at = NOW()
+      `UPDATE aplicaciones SET fecha_inicio_tentativa = $2, updated_at = NOW()
        WHERE id = $1`,
       [params.aplicacionId, params.fechaInicio]
     );
+    await transicionarEstado(params.aplicacionId, 'contratado', {
+      runner: client,
+      orgId: params.orgId,
+    });
 
     // 3. Get leader info if provided
     let liderNombre = 'Tu líder directo';
@@ -256,12 +269,13 @@ export function buildVariablesBienvenida(data: {
   };
 
   const TIPO_CONTRATO_LABELS: Record<string, string> = {
+    'indefinido': 'Término indefinido',
+    'termino_fijo': 'Término fijo',
     'prestacion_servicios': 'Prestación de servicios',
+    'obra_labor': 'Obra o labor',
+    'aprendizaje': 'Aprendizaje',
     'horas_demanda': 'Horas y demanda',
     'laboral': 'Contrato laboral',
-    'termino_indefinido': 'Término indefinido',
-    'termino_fijo': 'Término fijo',
-    'obra_labor': 'Obra o labor',
   };
 
   const MODALIDAD_LABELS: Record<string, string> = {
@@ -287,14 +301,27 @@ export function buildVariablesBienvenida(data: {
   return { ...base, ...overrides };
 }
 
+/**
+ * Sustituye los marcadores {{variable}} de la plantilla de bienvenida.
+ *
+ * @param escaparValores  Debe ser `true` cuando el resultado se inserta en HTML
+ *   (el cuerpo del correo) y `false` cuando es texto plano (el asunto). Sin esta
+ *   distincion, `candidato_nombre` —que viene del formulario publico de
+ *   postulacion— se interpolaba crudo en el HTML del correo de bienvenida:
+ *   quien se postulaba podia inyectar enlaces o reescribir el cuerpo de un
+ *   correo firmado con la marca del cliente. `sustituirVariables`
+ *   (email-templates.ts) ya sigue este mismo criterio.
+ */
 export function renderPlantilla(
   template: string,
-  variables: VariablesBienvenida
+  variables: VariablesBienvenida,
+  escaparValores = false
 ): string {
   let rendered = template;
   for (const [key, value] of Object.entries(variables)) {
     const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-    rendered = rendered.replace(regex, value || '');
+    const valor = value || '';
+    rendered = rendered.replace(regex, escaparValores ? escaparHtml(String(valor)) : String(valor));
   }
   return rendered;
 }
@@ -313,7 +340,7 @@ export async function enviarEmailBienvenida(
             o.name as org_nombre
      FROM onboarding ob
      JOIN aplicaciones a ON a.id = ob.aplicacion_id
-     JOIN candidatos c ON c.id = ob.candidato_id
+     JOIN candidatos c ON c.id = ob.candidato_id AND c.organization_id = ob.organization_id
      JOIN vacantes v ON v.id = a.vacante_id
      JOIN organizations o ON o.id = ob.organization_id
      WHERE ob.id = $1 AND ob.organization_id = $2`,
@@ -347,21 +374,36 @@ export async function enviarEmailBienvenida(
   const plantilla = config.plantilla_bienvenida || PLANTILLA_BIENVENIDA_DEFAULT;
   // Los documentos de onboarding se colocan manualmente en el cuerpo de la plantilla
   // (via el link estable copiable de Configuracion > Onboarding), no se auto-anexan.
-  const htmlBody = renderPlantilla(plantilla, variables);
+  const htmlBody = renderPlantilla(plantilla, variables, true);
 
   const asunto = config.asunto_bienvenida || ASUNTO_BIENVENIDA_DEFAULT;
+  // El asunto es texto plano: aqui NO se escapa (mostraria "Perez &amp; Cia").
   const subject = renderPlantilla(asunto, variables);
   const fromEmail = config.email_remitente || undefined;
   const fromName = config.nombre_remitente || undefined;
 
   try {
-    await sendEmail({
+    // `sendEmail` devuelve false (no lanza) cuando el proveedor rechaza el
+    // envio. Ignorar ese booleano marcaba el onboarding como 'enviado' aunque
+    // Resend hubiera respondido un error, y la API contestaba "Email enviado
+    // correctamente": el reclutador daba por avisado a un candidato que nunca
+    // recibio nada.
+    const enviado = await sendEmail({
       to: ob.candidato_email,
       subject,
       htmlBody,
       from: fromEmail,
       fromName,
     });
+
+    if (!enviado) {
+      await pool.query(
+        `UPDATE onboarding SET email_bienvenida_estado = 'error', updated_at = NOW() WHERE id = $1`,
+        [onboardingId]
+      );
+      console.error(`[Onboarding] El proveedor rechazo el email de bienvenida (onboarding ${onboardingId})`);
+      return false;
+    }
 
     await pool.query(
       `UPDATE onboarding SET email_bienvenida_estado = 'enviado', email_bienvenida_enviado_at = NOW(), updated_at = NOW()
@@ -394,11 +436,25 @@ export async function enviarEmailBienvenida(
   }
 }
 
-export async function procesarEmailsProgramados(): Promise<{ enviados: number; errores: number }> {
+/**
+ * Envia los correos de bienvenida programados que ya tocan.
+ *
+ * @param orgId Si se indica, procesa SOLO esa organizacion. El cron real (que se
+ *   autentica con CRON_SECRET) lo omite para barrer todas; un disparo manual
+ *   desde el panel debe pasar el suyo. Sin este parametro, cualquier usuario
+ *   autenticado de cualquier empresa forzaba el envio anticipado de los correos
+ *   de TODAS las organizaciones y mutaba sus filas.
+ */
+export async function procesarEmailsProgramados(
+  orgId?: string
+): Promise<{ enviados: number; errores: number }> {
   const result = await pool.query(
     `SELECT ob.id, ob.organization_id
      FROM onboarding ob
-     WHERE ob.fecha_inicio <= CURRENT_DATE AND ob.email_bienvenida_estado = 'programado'`
+     WHERE ob.fecha_inicio <= CURRENT_DATE
+       AND ob.email_bienvenida_estado = 'programado'
+       AND ($1::uuid IS NULL OR ob.organization_id = $1)`,
+    [orgId ?? null]
   );
 
   let enviados = 0;
@@ -424,7 +480,7 @@ export async function listOnboardings(
            c.nombre as candidato_nombre, c.apellido as candidato_apellido, c.email as candidato_email,
            v.titulo as vacante_titulo, v.id as vacante_id
     FROM onboarding ob
-    JOIN candidatos c ON c.id = ob.candidato_id
+    JOIN candidatos c ON c.id = ob.candidato_id AND c.organization_id = ob.organization_id
     JOIN aplicaciones a ON a.id = ob.aplicacion_id
     JOIN vacantes v ON v.id = a.vacante_id
     WHERE ob.organization_id = $1`;
@@ -460,13 +516,16 @@ export async function getOnboarding(
             c.nombre as candidato_nombre, c.apellido as candidato_apellido, c.email as candidato_email,
             v.titulo as vacante_titulo, v.id as vacante_id
      FROM onboarding ob
-     JOIN candidatos c ON c.id = ob.candidato_id
+     JOIN candidatos c ON c.id = ob.candidato_id AND c.organization_id = ob.organization_id
      JOIN aplicaciones a ON a.id = ob.aplicacion_id
      JOIN vacantes v ON v.id = a.vacante_id
      WHERE ob.id = $1 AND ob.organization_id = $2`,
     [onboardingId, orgId]
   );
-  return result.rows[0] || null;
+  // Devolver `null` hacia que el route reventara con 500 al leer los campos.
+  // Un id inexistente o de otra organizacion es un 404.
+  if (result.rows.length === 0) throw new NotFoundError('Onboarding', onboardingId);
+  return result.rows[0];
 }
 
 export async function getOnboardingByAplicacion(
@@ -478,7 +537,7 @@ export async function getOnboardingByAplicacion(
             c.nombre as candidato_nombre, c.apellido as candidato_apellido, c.email as candidato_email,
             v.titulo as vacante_titulo, v.id as vacante_id
      FROM onboarding ob
-     JOIN candidatos c ON c.id = ob.candidato_id
+     JOIN candidatos c ON c.id = ob.candidato_id AND c.organization_id = ob.organization_id
      JOIN aplicaciones a ON a.id = ob.aplicacion_id
      JOIN vacantes v ON v.id = a.vacante_id
      WHERE ob.aplicacion_id = $1 AND ob.organization_id = $2`,
@@ -554,40 +613,40 @@ export async function updateOnboardingConfig(
   orgId: string,
   config: Partial<OnboardingConfig>
 ): Promise<void> {
-  const fields: string[] = [];
+  const columnas: string[] = [];
   const params: unknown[] = [orgId];
-  let idx = 2;
 
-  if (config.plantilla_bienvenida !== undefined) {
-    fields.push(`onboarding_plantilla = $${idx++}`);
-    params.push(config.plantilla_bienvenida);
-  }
-  if (config.asunto_bienvenida !== undefined) {
-    fields.push(`onboarding_asunto = $${idx++}`);
-    params.push(config.asunto_bienvenida);
-  }
-  if (config.email_remitente !== undefined) {
-    fields.push(`email_remitente = $${idx++}`);
-    params.push(config.email_remitente);
-  }
-  if (config.nombre_remitente !== undefined) {
-    fields.push(`onboarding_remitente_nombre = $${idx++}`);
-    params.push(config.nombre_remitente);
+  const mapa: [keyof OnboardingConfig, string][] = [
+    ['plantilla_bienvenida', 'onboarding_plantilla'],
+    ['asunto_bienvenida', 'onboarding_asunto'],
+    ['email_remitente', 'email_remitente'],
+    ['nombre_remitente', 'onboarding_remitente_nombre'],
+  ];
+
+  for (const [clave, columna] of mapa) {
+    if (config[clave] !== undefined) {
+      columnas.push(columna);
+      params.push(config[clave]);
+    }
   }
 
-  if (fields.length === 0) return;
-  fields.push('updated_at = NOW()');
+  if (columnas.length === 0) return;
 
-  const existing = await pool.query(
-    `SELECT id FROM org_settings WHERE organization_id = $1`, [orgId]
+  // Upsert real, con las columnas presentes generadas dinamicamente (igual que
+  // `configuracion/emails/route.ts`). Antes se hacia un `UPDATE` a secas: si la
+  // organizacion aun no tenia fila en `org_settings` (comun — esa fila solo se
+  // crea la primera vez que alguien guarda CUALQUIER configuracion), el UPDATE
+  // no afectaba nada y la API respondia 200 sin haber guardado nada. Los otros
+  // 3 escritores de esta tabla (emails, scoring, checklist) ya hacian upsert.
+  const placeholders = columnas.map((_, i) => `$${i + 2}`);
+  const sets = columnas.map((c, i) => `${c} = $${i + 2}`);
+
+  await pool.query(
+    `INSERT INTO org_settings (organization_id, ${columnas.join(', ')})
+     VALUES ($1, ${placeholders.join(', ')})
+     ON CONFLICT (organization_id) DO UPDATE SET ${sets.join(', ')}, updated_at = NOW()`,
+    params
   );
-
-  if (existing.rows.length > 0) {
-    await pool.query(
-      `UPDATE org_settings SET ${fields.join(', ')} WHERE organization_id = $1`,
-      params
-    );
-  }
 }
 
 // ─── DOCUMENTOS ONBOARDING ORG ────────────────
@@ -609,84 +668,11 @@ export async function removeDocumentoOnboarding(
   docId: string,
   orgId: string
 ): Promise<void> {
-  await pool.query(
+  const resultado = await pool.query(
     `UPDATE documentos_onboarding SET is_active = false WHERE id = $1 AND organization_id = $2`,
     [docId, orgId]
   );
-}
-
-// ═══════════════════════════════════════════════
-// LEGACY: Old onboarding status functions (backward compat)
-// ═══════════════════════════════════════════════
-
-interface OnboardingStatus {
-  candidato_id: UUID;
-  candidato_nombre: string;
-  contrato_firmado: boolean;
-  documentos: DocumentoCandidato[];
-  documentos_requeridos: string[];
-  documentos_completados: number;
-  porcentaje_completado: number;
-}
-
-const DOCUMENTOS_REQUERIDOS = [
-  'Documento de identidad',
-  'Certificado bancario',
-  'Certificado de EPS',
-  'Certificado de AFP',
-  'Foto',
-  'Antecedentes',
-];
-
-export async function getOnboardingStatus(
-  orgId: UUID,
-  candidatoId: UUID
-): Promise<OnboardingStatus> {
-  const candidatoResult = await pool.query(
-    'SELECT nombre, apellido FROM candidatos WHERE id = $1',
-    [candidatoId]
-  );
-  if (candidatoResult.rows.length === 0) throw new NotFoundError('Candidato', candidatoId);
-
-  const contratoResult = await pool.query(
-    `SELECT estado FROM contratos WHERE candidato_id = $1 AND organization_id = $2
-    ORDER BY created_at DESC LIMIT 1`,
-    [candidatoId, orgId]
-  );
-  const contratoFirmado = contratoResult.rows[0]?.estado === 'firmado';
-
-  const docsResult = await pool.query<DocumentoCandidato>(
-    'SELECT * FROM documentos_candidato WHERE candidato_id = $1 ORDER BY created_at',
-    [candidatoId]
-  );
-
-  const documentosCompletados = docsResult.rows.filter(d => d.verificado).length;
-  const totalRequeridos = DOCUMENTOS_REQUERIDOS.length + 1;
-  const completados = documentosCompletados + (contratoFirmado ? 1 : 0);
-
-  return {
-    candidato_id: candidatoId,
-    candidato_nombre: `${candidatoResult.rows[0].nombre} ${candidatoResult.rows[0].apellido}`,
-    contrato_firmado: contratoFirmado,
-    documentos: docsResult.rows,
-    documentos_requeridos: DOCUMENTOS_REQUERIDOS,
-    documentos_completados: completados,
-    porcentaje_completado: Math.round((completados / totalRequeridos) * 100),
-  };
-}
-
-export async function uploadDocumento(
-  orgId: UUID,
-  candidatoId: UUID,
-  tipo: string,
-  nombre: string,
-  url: string
-): Promise<DocumentoCandidato> {
-  const result = await pool.query<DocumentoCandidato>(
-    `INSERT INTO documentos_candidato (organization_id, candidato_id, tipo, nombre, url)
-    VALUES ($1, $2, $3, $4, $5)
-    RETURNING *`,
-    [orgId, candidatoId, tipo, nombre, url]
-  );
-  return result.rows[0];
+  // Sin comprobar rowCount, borrar un id inexistente o de otra org
+  // respondia exito igual.
+  if (resultado.rowCount === 0) throw new NotFoundError('Documento de onboarding', docId);
 }

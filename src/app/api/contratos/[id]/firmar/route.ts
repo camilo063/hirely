@@ -3,6 +3,7 @@ import { requireAuth, getOrgId, getUserId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
 import { enviarParaFirma } from '@/lib/services/firma-electronica.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 // POST — Enviar contrato para firma electronica
 export const maxDuration = 30;
@@ -13,6 +14,8 @@ export async function POST(
 ) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const { id } = await params;
 
@@ -35,6 +38,8 @@ export async function PATCH(
 ) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const userId = await getUserId();
     const { id: contratoId } = await params;
@@ -85,7 +90,7 @@ export async function PATCH(
     // 3. Activity log
     try {
       await pool.query(
-        `INSERT INTO activity_log (organization_id, user_id, entidad, entidad_id, accion, detalles)
+        `INSERT INTO activity_log (organization_id, user_id, entity_type, entity_id, action, details)
          VALUES ($1, $2, 'contrato', $3, 'contrato_firmado', $4)`,
         [
           orgId, userId, contratoId,

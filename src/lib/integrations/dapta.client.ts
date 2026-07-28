@@ -154,10 +154,34 @@ export class DaptaClient {
     }
   }
 
+  /**
+   * Verifica el secreto del webhook de Dapta.
+   *
+   * Antes devolvia `true` cuando no habia secreto configurado — y como
+   * DAPTA_WEBHOOK_SECRET suele estar vacio, el webhook quedaba completamente
+   * abierto: un tercero anonimo podia enviar una transcripcion falsificada para
+   * la entrevista de cualquier organizacion, marcarla como completada y (con la
+   * clave de IA activa) reescribir el score del candidato.
+   *
+   * Ahora falla cerrado en produccion, igual que el resto de webhooks.
+   */
   verifyWebhook(headers: Headers): boolean {
-    if (!this.config.webhookSecret) return true;
+    if (!this.config.webhookSecret) {
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[Dapta] Webhook rechazado: DAPTA_WEBHOOK_SECRET no configurado');
+        return false;
+      }
+      console.warn('[Dapta] Sin secreto configurado — se acepta por ser entorno de desarrollo');
+      return true;
+    }
     const secret = headers.get('x-webhook-secret') || headers.get('x-dapta-secret') || '';
-    return secret === this.config.webhookSecret;
+    if (secret.length !== this.config.webhookSecret.length) return false;
+    // Comparacion en tiempo constante.
+    let diff = 0;
+    for (let i = 0; i < secret.length; i++) {
+      diff |= secret.charCodeAt(i) ^ this.config.webhookSecret.charCodeAt(i);
+    }
+    return diff === 0;
   }
 
   isConfigured(): boolean {

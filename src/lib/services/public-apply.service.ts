@@ -9,7 +9,9 @@ import { NotFoundError } from '../utils/errors';
  */
 export async function getPublicVacante(vacanteId: UUID): Promise<Vacante> {
   const result = await pool.query<Vacante>(
-    `SELECT * FROM vacantes WHERE id = $1 AND estado = 'publicada'`,
+    // `is_published` tambien: la pagina publica lo exige, pero esta consulta no, asi
+    // que quien conociera el UUID seguia postulandose a una vacante ya retirada.
+    `SELECT * FROM vacantes WHERE id = $1 AND estado = 'publicada' AND is_published = true`,
     [vacanteId]
   );
   if (result.rows.length === 0) throw new NotFoundError('Vacante', vacanteId);

@@ -3,6 +3,7 @@ import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
 import { cached, invalidate, cacheKeys } from '@/lib/cache';
+import { requireAdmin } from '@/lib/auth/authorization';
 
 // Configuracion de scoring a nivel organizacion:
 //  - peso_ia / peso_humano: ponderacion del score dual (entrevista IA vs evaluacion humana)
@@ -43,6 +44,8 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   try {
     await requireAuth();
+    // Solo administradores: esta ruta cambia configuracion de toda la empresa.
+    await requireAdmin();
     const orgId = await getOrgId();
     const body = await request.json();
 

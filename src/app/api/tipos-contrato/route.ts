@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { listTiposContrato, createTipoContrato } from '@/lib/services/tipos-contrato.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 10;
 
@@ -19,6 +20,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
+    // Escritura: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const body = await request.json();
 

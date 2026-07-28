@@ -39,7 +39,7 @@ export const aplicacionCreateSchema = z.object({
 export const aplicacionUpdateEstadoSchema = z.object({
   estado: z.enum([
     'nuevo', 'en_revision', 'revisado', 'preseleccionado', 'entrevista_ia',
-    'entrevista_humana', 'evaluado', 'seleccionado',
+    'prueba_tecnica', 'entrevista_humana', 'evaluado', 'seleccionado',
     'documentos_pendientes', 'documentos_completos',
     'contratado', 'contrato_terminado', 'descartado',
   ]),

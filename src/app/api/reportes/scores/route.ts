@@ -4,6 +4,7 @@ import { obtenerDistribucionScores } from '@/lib/services/reportes.service';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { cached, cacheKeys, METRICS_TTL } from '@/lib/cache';
 import type { FiltrosReporte } from '@/lib/types/reportes.types';
+import { uuidValido } from '@/lib/services/reportes.service';
 
 /** Serializa los filtros que afectan el resultado, para la key de cache. */
 function filtrosVariant(f: FiltrosReporte): string {
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const filtros: FiltrosReporte = {
-      vacanteId: searchParams.get('vacanteId') || undefined,
+      vacanteId: uuidValido(searchParams.get('vacanteId')) || undefined,
       desde: searchParams.get('desde') || undefined,
       hasta: searchParams.get('hasta') || undefined,
       periodo: (searchParams.get('periodo') as FiltrosReporte['periodo']) || undefined,

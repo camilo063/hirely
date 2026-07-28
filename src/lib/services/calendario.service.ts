@@ -13,6 +13,9 @@ import {
   refrescarToken,
 } from '@/lib/integrations/google-calendar.client';
 
+/** Duracion por defecto del evento de calendario para una entrevista humana. */
+const DURACION_ENTREVISTA_MIN = 60;
+
 interface GoogleToken {
   id: string;
   access_token: string;
@@ -55,7 +58,8 @@ async function obtenerTokenActivo(userId: string, organizationId: string): Promi
 
 export async function crearEventoParaEntrevista(
   entrevistaId: string,
-  userId: string
+  userId: string,
+  orgId?: string
 ): Promise<{ success: boolean; meetLink?: string; calendarLink?: string; error?: string }> {
   try {
     // Get interview with relations
@@ -68,8 +72,9 @@ export async function crearEventoParaEntrevista(
        JOIN candidatos c ON eh.candidato_id = c.id
        JOIN vacantes v ON eh.vacante_id = v.id
        JOIN users u ON eh.entrevistador_id = u.id
-       WHERE eh.id = $1`,
-      [entrevistaId]
+       WHERE eh.id = $1
+         AND ($2::uuid IS NULL OR v.organization_id = $2)`,
+      [entrevistaId, orgId ?? null]
     );
 
     if (entResult.rows.length === 0) {
@@ -84,7 +89,10 @@ export async function crearEventoParaEntrevista(
     }
 
     const fechaInicio = new Date(ent.fecha_programada);
-    const duracion = ent.duracion_minutos || 60;
+    // Las entrevistas humanas no almacenan duracion (ni la UI la pide): el evento
+    // de Calendar usa una hora. Antes se leia `ent.duracion_minutos`, un campo que
+    // no existe en la tabla, asi que el resultado era el mismo pero por accidente.
+    const duracion = DURACION_ENTREVISTA_MIN;
     const fechaFin = new Date(fechaInicio.getTime() + duracion * 60 * 1000);
 
     const candidatoNombre = `${ent.candidato_nombre} ${ent.candidato_apellido || ''}`.trim();
@@ -135,11 +143,16 @@ export async function crearEventoParaEntrevista(
 
 export async function actualizarEventoEntrevista(
   entrevistaId: string,
-  userId: string
+  userId: string,
+  orgId?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const ceResult = await pool.query(
-      `SELECT ce.google_event_id, eh.organization_id, eh.fecha_programada, eh.duracion_minutos,
+      // `duracion_minutos` NO existe en entrevistas_humanas (esta en entrevistas_ia y
+      // en evaluaciones). La consulta lanzaba 42703 al ejecutarse, y en el alta del
+      // evento se leia como undefined, asi que Google Calendar recibia siempre 60
+      // minutos ignorando la duracion real.
+      `SELECT ce.google_event_id, eh.organization_id, eh.fecha_programada,
               c.nombre as candidato_nombre, c.apellido as candidato_apellido, c.email as candidato_email,
               v.titulo as vacante_titulo, u.email as entrevistador_email
        FROM calendar_events ce
@@ -147,8 +160,9 @@ export async function actualizarEventoEntrevista(
        JOIN candidatos c ON eh.candidato_id = c.id
        JOIN vacantes v ON eh.vacante_id = v.id
        JOIN users u ON eh.entrevistador_id = u.id
-       WHERE ce.entrevista_id = $1`,
-      [entrevistaId]
+       WHERE ce.entrevista_id = $1
+         AND ($2::uuid IS NULL OR eh.organization_id = $2)`,
+      [entrevistaId, orgId ?? null]
     );
 
     if (ceResult.rows.length === 0) {
@@ -160,7 +174,7 @@ export async function actualizarEventoEntrevista(
     if (!token) return { success: false, error: 'Google Calendar no conectado' };
 
     const fechaInicio = new Date(data.fecha_programada);
-    const fechaFin = new Date(fechaInicio.getTime() + (data.duracion_minutos || 60) * 60 * 1000);
+    const fechaFin = new Date(fechaInicio.getTime() + DURACION_ENTREVISTA_MIN * 60 * 1000);
     const candidatoNombre = `${data.candidato_nombre} ${data.candidato_apellido || ''}`.trim();
 
     const invitados: string[] = [];
@@ -192,15 +206,17 @@ export async function actualizarEventoEntrevista(
 
 export async function cancelarEventoEntrevista(
   entrevistaId: string,
-  userId: string
+  userId: string,
+  orgId?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const ceResult = await pool.query(
       `SELECT ce.google_event_id, eh.organization_id
        FROM calendar_events ce
        JOIN entrevistas_humanas eh ON eh.id = ce.entrevista_id
-       WHERE ce.entrevista_id = $1`,
-      [entrevistaId]
+       WHERE ce.entrevista_id = $1
+         AND ($2::uuid IS NULL OR eh.organization_id = $2)`,
+      [entrevistaId, orgId ?? null]
     );
 
     if (ceResult.rows.length === 0) return { success: true };

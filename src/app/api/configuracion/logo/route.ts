@@ -4,6 +4,7 @@ import { saveFile, FileValidationError, deleteFile } from '@/lib/utils/file-stor
 import { resolveUrl } from '@/lib/integrations/s3';
 import { pool } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { requireAdmin } from '@/lib/auth/authorization';
 
 const ALLOWED_LOGO_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
 
@@ -12,6 +13,8 @@ export const maxDuration = 10;
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
+    // Solo administradores: esta ruta cambia configuracion de toda la empresa.
+    await requireAdmin();
     const orgId = await getOrgId();
 
     const formData = await request.formData();

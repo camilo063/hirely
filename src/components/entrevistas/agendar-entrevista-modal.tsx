@@ -99,7 +99,13 @@ export function AgendarEntrevistaModal({
           description: 'Link de Google Meet generado.',
         });
       } else {
-        toast.success('Entrevista agendada. Conecta Google Calendar para generar el link de Meet automáticamente.');
+        toast.success('Entrevista agendada', {
+          description: 'Conecta Google Calendar para generar el link de Meet automáticamente.',
+          action: {
+            label: 'Conectar',
+            onClick: () => { window.location.href = '/configuracion?tab=integraciones'; },
+          },
+        });
       }
 
       onSuccess?.();

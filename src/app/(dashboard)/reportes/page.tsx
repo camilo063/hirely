@@ -140,7 +140,12 @@ export default function ReportesPage() {
           {/* Filtros */}
           <FiltrosPanel filtros={filtros} onChange={setFiltros} vacantes={vacantes} />
 
-          {/* KPI Cards */}
+          {/* KPI Cards — siempre globales e historicos, NO responden a los filtros.
+              Se rotula para que nadie los lea como "los ultimos 7 dias". */}
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Resumen general</span>
+            <span className="text-[11px] text-muted-foreground">Historico completo · no afectado por los filtros</span>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <KPICard
               titulo="Vacantes Activas"
@@ -181,7 +186,8 @@ export default function ReportesPage() {
               {funnel && <FunnelChart data={funnel} />}
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-base font-semibold text-navy mb-4">Dias promedio por etapa</h2>
+              <h2 className="text-base font-semibold text-navy mb-1">Dias promedio por etapa</h2>
+              <p className="text-[11px] text-muted-foreground mb-4">Historico completo · no afectado por los filtros</p>
               {tiempos && <TimeMetrics tiempos={tiempos} />}
             </div>
           </div>
@@ -195,7 +201,8 @@ export default function ReportesPage() {
           {/* Top Vacantes + Scores */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-base font-semibold text-navy mb-4">Top Vacantes por Conversion</h2>
+              <h2 className="text-base font-semibold text-navy mb-1">Top Vacantes por Conversion</h2>
+              <p className="text-[11px] text-muted-foreground mb-4">Historico completo · no afectado por los filtros</p>
               <TopVacantesTable data={topVacantes} />
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-5">

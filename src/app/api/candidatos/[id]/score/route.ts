@@ -4,6 +4,7 @@ import { runScoringPipeline } from '@/lib/services/scoring-pipeline.service';
 import { calculateAtsScore, updateAplicacionScore } from '@/lib/services/scoring-ats.service';
 import { pool } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 /**
  * POST /api/candidatos/[id]/score
@@ -20,6 +21,8 @@ export async function POST(
 ) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const { id: candidatoId } = await params;
 
@@ -35,12 +38,20 @@ export async function POST(
         const msg = (pipelineError?.message || 'Error desconocido en scoring').toString();
         console.error(`[Score Route] Pipeline fallo candidato=${candidatoId} vacante=${vacante_id}:`, pipelineError);
         try {
+          // El guard de organizacion tambien va en la ruta de ERROR. Sin el,
+          // forzar un fallo (pasando un candidato que no es de la vacante) era
+          // suficiente para escribir texto controlado en `score_ats_error` de la
+          // aplicacion de otra empresa e incrementar su contador de intentos.
           await pool.query(
             `UPDATE aplicaciones SET
                score_ats_error = $1,
                score_ats_intentos = COALESCE(score_ats_intentos, 0) + 1
-             WHERE candidato_id = $2 AND vacante_id = $3`,
-            [msg.substring(0, 500), candidatoId, vacante_id]
+             WHERE candidato_id = $2 AND vacante_id = $3
+               AND EXISTS (
+                 SELECT 1 FROM vacantes v
+                 WHERE v.id = aplicaciones.vacante_id AND v.organization_id = $4
+               )`,
+            [msg.substring(0, 500), candidatoId, vacante_id, orgId]
           );
         } catch (dbErr) {
           console.error('[Score Route] No se pudo persistir score_ats_error:', dbErr);
@@ -82,12 +93,16 @@ export async function GET(
     const vacanteId = request.nextUrl.searchParams.get('vacante_id');
 
     if (vacanteId) {
+      // El JOIN a vacantes acota por organizacion. Sin el, dos UUID (candidato
+      // y vacante) bastaban para leer los scores de otra empresa sin ningun
+      // paso previo.
       const result = await pool.query(
-        `SELECT score_ats, score_ats_breakdown, score_ats_resumen, scored_at,
-                score_ia, score_humano, score_final
-         FROM aplicaciones
-         WHERE candidato_id = $1 AND vacante_id = $2`,
-        [candidatoId, vacanteId]
+        `SELECT a.score_ats, a.score_ats_breakdown, a.score_ats_resumen, a.scored_at,
+                a.score_ia, a.score_humano, a.score_final
+         FROM aplicaciones a
+         JOIN vacantes v ON v.id = a.vacante_id
+         WHERE a.candidato_id = $1 AND a.vacante_id = $2 AND v.organization_id = $3`,
+        [candidatoId, vacanteId, orgId]
       );
 
       if (result.rows.length === 0) {

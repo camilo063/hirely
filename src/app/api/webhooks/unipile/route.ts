@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { syncLinkedInApplicants } from '@/lib/services/linkedin-sync.service';
 import { pool } from '@/lib/db';
 
@@ -10,10 +11,28 @@ import { pool } from '@/lib/db';
  */
 export const maxDuration = 30;
 
+/**
+ * Compara el secreto compartido en tiempo constante.
+ *
+ * El `!==` directo que habia aqui filtra por timing cuanto del secreto
+ * coincide caracter a caracter — el unico de los 5 webhooks sin ninguna
+ * proteccion de este tipo (los otros usan HMAC o, como dapta, una comparacion
+ * manual constante). No se cambia a HMAC porque no hay documentacion de que
+ * Unipile firme sus payloads asi; se iguala el mecanismo de secreto compartido
+ * que ya usa, pero de forma segura.
+ */
+function secretosIguales(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const webhookSecret = request.headers.get('x-webhook-secret');
-    if (webhookSecret !== process.env.UNIPILE_WEBHOOK_SECRET) {
+    const secretoEsperado = process.env.UNIPILE_WEBHOOK_SECRET;
+    if (!webhookSecret || !secretoEsperado || !secretosIguales(webhookSecret, secretoEsperado)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

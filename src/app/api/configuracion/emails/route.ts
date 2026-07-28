@@ -3,6 +3,8 @@ import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
 import { cached, invalidate, cacheKeys } from '@/lib/cache';
+import { requireAdmin } from '@/lib/auth/authorization';
+import { sanitizarHtml } from '@/lib/utils/sanitize-html';
 
 // GET /api/configuracion/emails — Get email templates + firma admin email
 export const maxDuration = 10;
@@ -38,6 +40,8 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   try {
     await requireAuth();
+    // Solo administradores: esta ruta cambia configuracion de toda la empresa.
+    await requireAdmin();
     const orgId = await getOrgId();
     const body = await request.json();
 
@@ -53,10 +57,16 @@ export async function PATCH(request: NextRequest) {
     const values: (string | null)[] = [orgId];
     let paramIdx = 2;
 
+    // Los cuerpos de email se sanean: son HTML editable que despues se envia a
+    // candidatos firmado con la marca de la empresa, y ademas se previsualiza en
+    // el panel con dangerouslySetInnerHTML.
+    const camposHtml = new Set(['email_seleccion_body', 'email_rechazo_body', 'email_onboarding_body']);
+
     for (const field of allowedFields) {
       if (field in body) {
         updates.push(`${field} = $${paramIdx}`);
-        values.push(body[field] ?? null);
+        const valor = body[field] ?? null;
+        values.push(camposHtml.has(field) && valor ? sanitizarHtml(valor) : valor);
         paramIdx++;
       }
     }

@@ -9,19 +9,53 @@ import type {
   FiltrosReporte,
 } from '../types/reportes.types';
 
+/**
+ * Etapas del funnel.
+ *
+ * Debe cubrir TODOS los estados del pipeline. Antes faltaban `revisado`,
+ * `documentos_pendientes`, `documentos_completos`, `contrato_terminado` y
+ * `descartado`, pero el total si los contaba: los candidatos en esos estados
+ * desaparecian del grafico y los porcentajes sumaban menos de 100 (medido: 66%
+ * sobre 3 aplicaciones). Los labels siguen el catalogo de pipeline-states.ts.
+ */
 const ORDEN_ETAPAS = [
   { key: 'nuevo', label: 'Nuevos', color: '#6366f1' },
   { key: 'en_revision', label: 'En revisión', color: '#8b5cf6' },
   { key: 'preseleccionado', label: 'Preseleccionados', color: '#00BCD4' },
-  { key: 'entrevista_ia', label: 'Prueba técnica', color: '#0ea5e9' },
-  { key: 'entrevista_humana', label: 'Entrevista Humana', color: '#10b981' },
+  { key: 'entrevista_ia', label: 'Entrevista IA', color: '#0ea5e9' },
+  { key: 'prueba_tecnica', label: 'Prueba técnica', color: '#06b6d4' },
+  { key: 'entrevista_humana', label: 'Entrevista humana', color: '#10b981' },
   { key: 'evaluado', label: 'A evaluar', color: '#f59e0b' },
   { key: 'seleccionado', label: 'Seleccionados', color: '#FF6B35' },
+  { key: 'documentos_pendientes', label: 'Documentos pendientes', color: '#f97316' },
+  { key: 'documentos_completos', label: 'Documentos completos', color: '#84cc16' },
   { key: 'contratado', label: 'Contratados', color: '#10B981' },
+  { key: 'contrato_terminado', label: 'Contrato terminado', color: '#64748b' },
+  { key: 'descartado', label: 'Descartados', color: '#ef4444' },
 ];
+
+/** Descarta fechas que Postgres no puede interpretar (evita el 500 por `date_trunc('hola')`). */
+function fechaValida(v?: string | null): string | null {
+  if (!v) return null;
+  return Number.isNaN(Date.parse(v)) ? null : v;
+}
+
+/** Descarta identificadores que no son UUID (evita el 500 por comparacion invalida). */
+export function uuidValido(v?: string | null): string | null {
+  if (!v) return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v) ? v : null;
+}
 
 function calcularFechasFiltro(filtros?: FiltrosReporte): { desde: string | null; hasta: string | null } {
   if (!filtros) return { desde: null, hasta: null };
+
+  // Las fechas llegan del querystring. Una cadena como 'hola' o '9999-99-99'
+  // hacia reventar la consulta con 500; aqui simplemente se descartan.
+  filtros = {
+    ...filtros,
+    desde: fechaValida(filtros.desde) ?? undefined,
+    hasta: fechaValida(filtros.hasta) ?? undefined,
+  };
 
   if (filtros.periodo && filtros.periodo !== 'custom') {
     const dias: Record<string, number> = {
@@ -81,8 +115,13 @@ export async function obtenerKPIsGenerales(organizationId: string): Promise<KPIs
     totalContratados: parseInt(row.total_contratados) || 0,
     aplicaciones90d,
     contratados90d,
+    // Se acota a [0,100]: `contratados90d` y `aplicaciones90d` son cohortes
+    // distintas (contrataciones recientes de candidatos que pudieron postularse
+    // hace un año), asi que el cociente podia superar el 100% — se llego a medir
+    // 133.3%. La vista ya usa `seleccionado_at` en vez de `updated_at`, lo que
+    // elimina el grueso del desfase; este tope evita mostrar un imposible.
     tasaConversionGlobal: aplicaciones90d > 0
-      ? Math.round((contratados90d / aplicaciones90d) * 1000) / 10
+      ? Math.min(100, Math.round((contratados90d / aplicaciones90d) * 1000) / 10)
       : 0,
     scoreAtsPromedio: row.score_ats_promedio ? parseFloat(row.score_ats_promedio) : null,
     scoreIaPromedio: row.score_ia_promedio ? parseFloat(row.score_ia_promedio) : null,
@@ -102,32 +141,47 @@ export async function obtenerFunnelConversion(
   const { desde, hasta } = calcularFechasFiltro(filtros);
   const vacanteId = filtros?.vacanteId || null;
 
+  // Embudo ACUMULATIVO: cuenta cuantos candidatos LLEGARON a cada etapa, no
+  // cuantos estan ahi ahora mismo.
+  //
+  // Antes se agrupaba por `estado` actual, asi que un candidato ya contratado no
+  // aparecia en "Nuevos" ni en "Preseleccionados": el grafico mostraba 0 en las
+  // primeras etapas aunque todo el mundo hubiera pasado por ellas, y las barras
+  // no decrecian — o sea, no era un embudo. `estados_completados` guarda el
+  // historial, asi que basta con contar "esta aqui O ya paso por aqui".
+  const claves = ORDEN_ETAPAS.map((e) => e.key);
+
   const result = await pool.query(
     `SELECT
-      estado,
-      COUNT(*) as cantidad
-    FROM aplicaciones
-    WHERE organization_id = $1
-      AND ($2::uuid IS NULL OR vacante_id = $2)
-      AND ($3::date IS NULL OR created_at >= $3)
-      AND ($4::date IS NULL OR created_at <= $4)
-    GROUP BY estado`,
+       k.clave,
+       COUNT(a.id) FILTER (
+         WHERE a.estado = k.clave OR k.clave = ANY(a.estados_completados)
+       ) AS cantidad
+     FROM unnest($5::text[]) AS k(clave)
+     LEFT JOIN aplicaciones a
+       ON a.organization_id = $1
+      AND ($2::uuid IS NULL OR a.vacante_id = $2)
+      AND ($3::date IS NULL OR a.created_at >= $3)
+      AND ($4::date IS NULL OR a.created_at <= $4)
+     GROUP BY k.clave`,
+    [organizationId, vacanteId, desde, hasta, claves]
+  );
+
+  const totalResult = await pool.query(
+    `SELECT COUNT(*) AS total
+     FROM aplicaciones
+     WHERE organization_id = $1
+       AND ($2::uuid IS NULL OR vacante_id = $2)
+       AND ($3::date IS NULL OR created_at >= $3)
+       AND ($4::date IS NULL OR created_at <= $4)`,
     [organizationId, vacanteId, desde, hasta]
   );
 
   const conteosPorEstado: Record<string, number> = {};
-  let totalAplicaciones = 0;
-
   for (const row of result.rows) {
-    const cantidad = parseInt(row.cantidad) || 0;
-    conteosPorEstado[row.estado] = cantidad;
-    if (row.estado !== 'descartado') {
-      totalAplicaciones += cantidad;
-    }
+    conteosPorEstado[row.clave] = parseInt(row.cantidad) || 0;
   }
-
-  // Include descartados in total for percentage calc
-  const totalConDescartados = totalAplicaciones + (conteosPorEstado['descartado'] || 0);
+  const totalConDescartados = parseInt(totalResult.rows[0]?.total) || 0;
 
   const etapas: FunnelEtapa[] = ORDEN_ETAPAS.map((e) => {
     const cantidad = conteosPorEstado[e.key] || 0;
@@ -201,22 +255,37 @@ export async function obtenerVolumenSemanal(
   organizationId: string,
   filtros?: FiltrosReporte
 ): Promise<VolumenSemana[]> {
-  const semanas: Record<string, number> = {
-    '7d': 2,
-    '30d': 5,
-    '90d': 13,
-    '180d': 26,
-    '365d': 52,
-  };
-  const limite = semanas[filtros?.periodo || '90d'] || 13;
+  // Se filtra por FECHA, no por "las N semanas con datos". Con `LIMIT n` a secas,
+  // pedir "ultimos 7 dias" devolvia las 2 semanas mas recientes QUE TUVIERAN
+  // datos — se midieron semanas de hace mes y medio — y ademas saltaba las
+  // semanas vacias, con lo que el eje X no era contiguo y la tendencia mentia.
+  // Serie CONTINUA de semanas dentro del periodo pedido.
+  //
+  // Dos fallos que arregla: (a) `7d` devolvia datos de hasta 15 dias atras
+  // porque la ventana se calculaba en semanas completas hacia atras; ahora el
+  // corte es el periodo real en dias. (b) las semanas SIN datos se omitian, con
+  // lo que el eje X no era contiguo y la pendiente de la tendencia mentia:
+  // `generate_series` las rellena con ceros.
+  const dias: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '180d': 180, '365d': 365 };
+  const diasPeriodo = dias[filtros?.periodo || '90d'] || 90;
 
   const result = await pool.query(
-    `SELECT semana, total_aplicaciones, contratados, descartados
-     FROM v_volumen_semanal
-     WHERE organization_id = $1
-     ORDER BY semana DESC
-     LIMIT $2`,
-    [organizationId, limite]
+    `WITH semanas AS (
+       SELECT generate_series(
+         date_trunc('week', NOW() - ($2::int * INTERVAL '1 day')),
+         date_trunc('week', NOW()),
+         INTERVAL '1 week'
+       )::date AS semana
+     )
+     SELECT s.semana,
+            COALESCE(v.total_aplicaciones, 0) AS total_aplicaciones,
+            COALESCE(v.contratados, 0)        AS contratados,
+            COALESCE(v.descartados, 0)        AS descartados
+     FROM semanas s
+     LEFT JOIN v_volumen_semanal v
+       ON v.semana = s.semana AND v.organization_id = $1
+     ORDER BY s.semana DESC`,
+    [organizationId, diasPeriodo]
   );
 
   return result.rows.reverse().map((row) => {

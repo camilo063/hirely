@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { obtenerEvaluacion, cancelarEvaluacion } from '@/lib/services/evaluacion-tecnica.service';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 10;
 
@@ -17,6 +18,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     await cancelarEvaluacion(params.id, orgId);
     return apiResponse({ message: 'Evaluación cancelada' });

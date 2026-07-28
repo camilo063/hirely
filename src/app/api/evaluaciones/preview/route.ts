@@ -3,6 +3,7 @@ import { getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
 import { z } from 'zod';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 const previewSchema = z.object({
   estructura: z.array(z.object({
@@ -91,6 +92,8 @@ async function seleccionarPreguntasPreview(
 
 export async function POST(request: NextRequest) {
   try {
+    // Escritura: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const body = await request.json();
     const { estructura } = previewSchema.parse(body);

@@ -4,6 +4,7 @@ import { parseCVFromPDF, parseCVFromLinkedIn } from '@/lib/services/cv-parser.se
 import { pdfUrlToBase64, pdfBufferToBase64 } from '@/lib/utils/pdf-extract';
 import { pool } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 /**
  * POST /api/candidatos/[id]/parse-cv
@@ -21,6 +22,8 @@ export async function POST(
 ) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const { id: candidatoId } = await params;
 

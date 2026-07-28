@@ -8,6 +8,7 @@ import { EstadoAplicacion } from '@/lib/types/common.types';
 import { PIPELINE_STAGES } from '@/lib/utils/constants';
 import { ScoreBadge } from './score-badge';
 import { Badge } from '@/components/ui/badge';
+import { EstancamientoBadge } from './estancamiento-badge';
 import { Linkedin, FileCheck, FileText, UserCheck, Calendar } from 'lucide-react';
 
 interface PipelineKanbanProps {
@@ -46,7 +47,7 @@ function KanbanCard({ aplicacion, onClick }: { aplicacion: AplicacionConCandidat
           <ScoreBadge score={Number(aplicacion.score_ats)} size="sm" />
         )}
       </div>
-      <div className="flex items-center gap-1.5 mt-2">
+      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         {aplicacion.candidato.fuente === 'linkedin' && (
           <span className="inline-flex items-center gap-0.5 text-[10px] text-[#0A66C2] bg-[#0A66C2]/5 px-1.5 py-0.5 rounded">
             <Linkedin className="h-2.5 w-2.5" /> LinkedIn
@@ -55,6 +56,7 @@ function KanbanCard({ aplicacion, onClick }: { aplicacion: AplicacionConCandidat
         {aplicacion.score_final !== null && (
           <ScoreBadge score={Number(aplicacion.score_final)} label="Final" size="sm" />
         )}
+        <EstancamientoBadge estado={aplicacion.estado} estadoUpdatedAt={aplicacion.estado_updated_at} />
       </div>
       {aplicacion.estado === EstadoAplicacion.SELECCIONADO && (
         <div className="mt-2">

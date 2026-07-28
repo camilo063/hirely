@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { uploadDocumentoPortal, getPortalData } from '@/lib/services/seleccion.service';
-import { resolveUrl } from '@/lib/integrations/s3';
+import { resolveUrl, buildS3Key, S3_BUCKET } from '@/lib/integrations/s3';
+import { pool } from '@/lib/db';
 
 /**
  * POST /api/portal/documentos/[token]/confirm
@@ -34,6 +35,34 @@ export async function POST(
     if (!tipo || !filename || !s3Url) {
       return NextResponse.json(
         { success: false, error: 'tipo, filename y s3Url son requeridos' },
+        { status: 400 }
+      );
+    }
+
+    // El `s3Url` lo propone el cliente, asi que se reconstruye el prefijo que
+    // /presign habria emitido para esta aplicacion y se exige que coincida.
+    // Sin este chequeo se podia confirmar una key ajena
+    // (`s3://bucket/<otra-org>/documentos/<otra-app>/cedula.pdf`) y la app
+    // terminaba sirviendo firmado el documento de otra empresa, tanto en el
+    // portal del candidato como en el panel del reclutador.
+    const aplicacionId = portalData.aplicacion_id as string;
+    const orgResult = await pool.query(
+      `SELECT v.organization_id FROM aplicaciones a JOIN vacantes v ON v.id = a.vacante_id WHERE a.id = $1`,
+      [aplicacionId]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+    if (!orgId) {
+      return NextResponse.json(
+        { success: false, error: 'Organizacion no encontrada' },
+        { status: 500 }
+      );
+    }
+
+    const prefijoEsperado = `s3://${S3_BUCKET}/${buildS3Key(orgId, 'documentos', aplicacionId, '')}`;
+    if (typeof s3Url !== 'string' || !s3Url.startsWith(prefijoEsperado) || s3Url.includes('..')) {
+      console.warn('[Portal Confirm] s3Url fuera del alcance de la aplicacion:', s3Url);
+      return NextResponse.json(
+        { success: false, error: 'La referencia del archivo no es valida.' },
         { status: 400 }
       );
     }

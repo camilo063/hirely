@@ -4,13 +4,16 @@ import { getAppUrl } from '@/lib/utils/url';
 import { seleccionarPreguntas } from './banco-preguntas.service';
 import { calcularScoreEvaluacion } from './evaluacion-scoring.service';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
+import { transicionarEstado } from './pipeline-transicion.service';
 import type {
   Evaluacion,
   EstructuraPlantilla,
   PreguntaAsignada,
   RespuestaCandidato,
 } from '@/lib/types/evaluacion-tecnica.types';
-import { NotFoundError } from '@/lib/utils/errors';
+import { NotFoundError, ValidationError, ConflictError } from '@/lib/utils/errors';
+import { assertAplicacionDeOrg } from '@/lib/auth/authorization';
+import { escaparHtml } from '@/lib/utils/sanitize-html';
 
 /**
  * Orquestador de evaluaciones técnicas.
@@ -37,16 +40,47 @@ export async function crearEvaluacion(data: {
   estructura?: EstructuraPlantilla[];
   asignado_por: string;
 }): Promise<Evaluacion> {
+  // La aplicacion llega del body. Sin esta comprobacion se podia crear una
+  // evaluacion propia apuntando a la aplicacion de otra empresa: a partir de ahi
+  // los GET filtraban el nombre y el email del candidato ajeno, el envio le
+  // mandaba un correo con la marca del atacante, y al responderla se sobrescribia
+  // su score_tecnico y su score_final (sabotaje del ranking).
+  //
+  // `candidato_id` y `vacante_id` se DERIVAN de la aplicacion verificada; los que
+  // vengan en el body se ignoran a proposito.
+  const aplicacion = await assertAplicacionDeOrg(data.aplicacion_id, data.organization_id);
+
   const token = crypto.randomBytes(32).toString('hex');
 
-  // Select questions from banco if estructura provided
+  // Select questions from banco.
+  //
+  // Si solo llega `plantilla_id`, la estructura se lee DE LA PLANTILLA. Antes se
+  // exigia que el cliente la mandara ya derivada: la UI lo hacia, pero llamar a
+  // la API con la plantilla —lo natural— devolvia 500.
+  let estructura = data.estructura;
+  if ((!data.preguntas || data.preguntas.length === 0) &&
+      (!estructura || estructura.length === 0) &&
+      data.plantilla_id) {
+    const tpl = await pool.query(
+      `SELECT estructura FROM evaluacion_plantillas WHERE id = $1 AND organization_id = $2`,
+      [data.plantilla_id, data.organization_id]
+    );
+    if (tpl.rows.length === 0) {
+      throw new NotFoundError('Plantilla de evaluación', data.plantilla_id);
+    }
+    const cruda = tpl.rows[0].estructura;
+    estructura = typeof cruda === 'string' ? JSON.parse(cruda) : cruda;
+  }
+
   let preguntas: PreguntaAsignada[];
   if (data.preguntas && data.preguntas.length > 0) {
     preguntas = data.preguntas;
-  } else if (data.estructura && data.estructura.length > 0) {
-    preguntas = await seleccionarPreguntas(data.organization_id, data.estructura);
+  } else if (estructura && estructura.length > 0) {
+    preguntas = await seleccionarPreguntas(data.organization_id, estructura);
   } else {
-    throw new Error('Se requieren preguntas o estructura para crear la evaluación');
+    throw new ValidationError(
+      'Se requieren preguntas, una estructura o una plantilla con estructura para crear la evaluación'
+    );
   }
 
   const puntajeTotal = preguntas.reduce((sum, p) => sum + p.puntos, 0);
@@ -59,7 +93,7 @@ export async function crearEvaluacion(data: {
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
     RETURNING *`,
     [
-      data.organization_id, data.aplicacion_id, data.candidato_id, data.vacante_id,
+      data.organization_id, aplicacion.id, aplicacion.candidato_id, aplicacion.vacante_id,
       data.plantilla_id || null, data.titulo, data.duracion_minutos, puntajeTotal,
       data.puntaje_aprobatorio, JSON.stringify(preguntas), 'pendiente', token,
       data.asignado_por,
@@ -73,8 +107,8 @@ export async function enviarEvaluacion(evaluacionId: string, orgId: string): Pro
   const result = await pool.query(
     `SELECT e.*, c.nombre as candidato_nombre, c.email as candidato_email, v.titulo as vacante_titulo
      FROM evaluaciones e
-     JOIN candidatos c ON c.id = e.candidato_id
-     JOIN vacantes v ON v.id = e.vacante_id
+     JOIN candidatos c ON c.id = e.candidato_id AND c.organization_id = e.organization_id
+     JOIN vacantes v ON v.id = e.vacante_id AND v.organization_id = e.organization_id
      WHERE e.id = $1 AND e.organization_id = $2`,
     [evaluacionId, orgId]
   );
@@ -102,7 +136,7 @@ export async function enviarEvaluacion(evaluacionId: string, orgId: string): Pro
 
   // Send evaluation email to candidate
   const { enviarEmail } = await import('./email.service');
-  await enviarEmail({
+  const resultadoEnvio = await enviarEmail({
     to: ev.candidato_email,
     subject: `Evaluacion Tecnica — ${ev.vacante_titulo}`,
     html: `
@@ -111,9 +145,9 @@ export async function enviarEvaluacion(evaluacionId: string, orgId: string): Pro
           <h1 style="color: white; margin: 0; font-size: 24px;">Hirely</h1>
         </div>
         <div style="background: white; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
-          <h2 style="color: #0A1F3F; margin-top: 0;">Hola, ${ev.candidato_nombre}!</h2>
+          <h2 style="color: #0A1F3F; margin-top: 0;">Hola, ${escaparHtml(ev.candidato_nombre)}!</h2>
           <p style="color: #374151; line-height: 1.6;">
-            Te hemos asignado una evaluacion tecnica para la posicion de <strong>${ev.vacante_titulo}</strong>.
+            Te hemos asignado una evaluacion tecnica para la posicion de <strong>${escaparHtml(ev.vacante_titulo)}</strong>.
           </p>
           <p style="color: #374151; line-height: 1.6;">
             Tienes <strong>72 horas</strong> para completarla.
@@ -132,6 +166,19 @@ export async function enviarEvaluacion(evaluacionId: string, orgId: string): Pro
     `,
     tags: { type: 'evaluacion_tecnica', evaluacion_id: evaluacionId },
   });
+
+  // Si el proveedor rechazo el correo, el candidato no tiene forma de enterarse:
+  // marcarla como 'enviada' dejaba al reclutador esperando una respuesta que no
+  // iba a llegar. Se revierte el estado y se avisa.
+  if (!resultadoEnvio.success) {
+    // `token_expira_at` tambien se revierte: dejarlo con la caducidad recien
+    // puesta era un dato huerfano de un envio que no ocurrio.
+    await pool.query(
+      `UPDATE evaluaciones SET estado = 'pendiente', token_expira_at = NULL, updated_at = NOW() WHERE id = $1`,
+      [evaluacionId]
+    );
+    throw new Error('No se pudo enviar el correo de la evaluacion. Revisa la configuracion de correo.');
+  }
 
   await pool.query(
     `INSERT INTO activity_log (organization_id, entity_type, entity_id, action, details)
@@ -160,8 +207,8 @@ export async function obtenerEvaluacionPorToken(token: string): Promise<{
             v.titulo as vacante_titulo,
             o.name as empresa_nombre
      FROM evaluaciones e
-     JOIN candidatos c ON c.id = e.candidato_id
-     JOIN vacantes v ON v.id = e.vacante_id
+     JOIN candidatos c ON c.id = e.candidato_id AND c.organization_id = e.organization_id
+     JOIN vacantes v ON v.id = e.vacante_id AND v.organization_id = e.organization_id
      JOIN organizations o ON o.id = e.organization_id
      WHERE e.token_acceso = $1`,
     [token]
@@ -197,8 +244,39 @@ export async function obtenerEvaluacionPorToken(token: string): Promise<{
       opciones: p.opciones?.map(o => ({ id: o.id, texto: o.texto })) || null,
     }));
 
+  // Proyeccion explicita para un endpoint PUBLICO.
+  //
+  // Antes se devolvia `{ ...row }` entero: el candidato recibia el
+  // `token_acceso`, los ids internos (`organization_id`, `aplicacion_id`,
+  // `candidato_id`, `vacante_id`, `asignado_por`) y los `eventos_seguridad`.
+  // Peor: tras completarla devolvia `score_total`, `score_detalle`, `aprobada` y
+  // sus propias `respuestas` IGNORANDO el flag `mostrar_resultados_al_candidato`,
+  // que el POST si respeta.
+  const mostrarResultados = row.mostrar_resultados_al_candidato === true;
+  const completada = row.estado === 'completada';
+
   return {
-    evaluacion: { ...row, preguntas },
+    evaluacion: {
+      id: row.id,
+      titulo: row.titulo,
+      estado: row.estado,
+      duracion_minutos: row.duracion_minutos,
+      puntaje_total: row.puntaje_total,
+      puntaje_aprobatorio: row.puntaje_aprobatorio,
+      enviada_at: row.enviada_at,
+      iniciada_at: row.iniciada_at,
+      completada_at: row.completada_at,
+      token_expira_at: row.token_expira_at,
+      preguntas,
+      // Los resultados solo si la plantilla lo autoriza y ya termino.
+      ...(completada && mostrarResultados
+        ? {
+            score_total: row.score_total,
+            aprobada: row.aprobada,
+            score_detalle: row.score_detalle,
+          }
+        : {}),
+    } as Evaluacion,
     candidato_nombre: row.candidato_nombre,
     vacante_titulo: row.vacante_titulo,
     empresa_nombre: row.empresa_nombre,
@@ -225,17 +303,27 @@ export async function guardarRespuestas(
   token: string,
   respuestas: RespuestaCandidato[]
 ): Promise<{ score: number; aprobada: boolean; detalle: Record<string, unknown>; mostrar_resultados: boolean }> {
-  // Get evaluation with correct answers
+  // Get evaluation with correct answers.
+  //
+  // El estado, la expiracion del token y el cronometro se validan AQUI, en el
+  // servidor. Antes solo se exigia el estado: la caducidad se comprobaba en el
+  // GET (que el candidato puede simplemente no llamar) y el limite de tiempo era
+  // puramente visual. Se podia responder con el token vencido hacia semanas, o
+  // saltarse el cronometro entero enviando sin pasar por "iniciar".
   const evResult = await pool.query(
     `SELECT e.*, ep.mostrar_resultados_al_candidato
      FROM evaluaciones e
      LEFT JOIN evaluacion_plantillas ep ON ep.id = e.plantilla_id
-     WHERE e.token_acceso = $1 AND e.estado IN ('en_progreso', 'enviada')`,
+     WHERE e.token_acceso = $1
+       AND e.estado = 'en_progreso'
+       AND (e.token_expira_at IS NULL OR e.token_expira_at > NOW())
+       AND e.iniciada_at IS NOT NULL
+       AND e.iniciada_at + (e.duracion_minutos * interval '1 minute') > NOW()`,
     [token]
   );
 
   if (evResult.rows.length === 0) {
-    throw new Error('Evaluación no encontrada o ya completada');
+    throw new Error('Evaluación no encontrada, ya completada, expirada o fuera de tiempo');
   }
 
   const ev = evResult.rows[0];
@@ -303,16 +391,16 @@ export async function guardarRespuestas(
   }
 
   // Completar la prueba tecnica deja al candidato en el estado "Prueba técnica"
-  // (key 'entrevista_ia'). El estado 'evaluado' ("A evaluar") es posterior a la
-  // Entrevista Humana y captura la evaluación humana, no la técnica.
-  // Solo avanza desde estados previos a la prueba técnica (no retrocede).
-  await pool.query(
-    `UPDATE aplicaciones SET
-       estado = 'entrevista_ia',
-       updated_at = NOW()
-     WHERE id = $1 AND estado IN ('nuevo','en_revision','revisado','preseleccionado')`,
-    [ev.aplicacion_id]
-  );
+  // (key 'prueba_tecnica', distinto de 'entrevista_ia' desde la migracion 038 —
+  // ese key es exclusivo de la llamada telefonica con Dapta). El estado
+  // 'evaluado' ("A evaluar") es posterior a la Entrevista Humana y captura la
+  // evaluación humana, no la técnica. Se incluye 'entrevista_ia' en el origen
+  // porque muchas organizaciones no usan Dapta y llegan directo desde
+  // 'preseleccionado'; las que si lo usan tambien pueden avanzar desde ahi.
+  await transicionarEstado(ev.aplicacion_id, 'prueba_tecnica', {
+    soloDesde: ['nuevo', 'en_revision', 'revisado', 'preseleccionado', 'entrevista_ia'],
+    orgId: ev.organization_id,
+  });
 
   // Activity log
   await pool.query(
@@ -422,8 +510,8 @@ export async function listarEvaluaciones(orgId: string, filters?: {
             c.nombre as candidato_nombre, c.apellido as candidato_apellido, c.email as candidato_email,
             v.titulo as vacante_titulo
      FROM evaluaciones e
-     JOIN candidatos c ON c.id = e.candidato_id
-     JOIN vacantes v ON v.id = e.vacante_id
+     JOIN candidatos c ON c.id = e.candidato_id AND c.organization_id = e.organization_id
+     JOIN vacantes v ON v.id = e.vacante_id AND v.organization_id = e.organization_id
      WHERE ${conditions.join(' AND ')}
      ORDER BY e.created_at DESC`,
     params
@@ -438,24 +526,71 @@ export async function obtenerEvaluacion(id: string, orgId: string): Promise<Eval
             c.nombre as candidato_nombre, c.apellido as candidato_apellido, c.email as candidato_email,
             v.titulo as vacante_titulo
      FROM evaluaciones e
-     JOIN candidatos c ON c.id = e.candidato_id
-     JOIN vacantes v ON v.id = e.vacante_id
+     JOIN candidatos c ON c.id = e.candidato_id AND c.organization_id = e.organization_id
+     JOIN vacantes v ON v.id = e.vacante_id AND v.organization_id = e.organization_id
      WHERE e.id = $1 AND e.organization_id = $2`,
     [id, orgId]
   );
 
   if (result.rows.length === 0) throw new NotFoundError('Evaluación', id);
-  return result.rows[0];
+  const evaluacion = result.rows[0];
+
+  // Enriquecer el snapshot con las respuestas correctas REALES.
+  //
+  // Las preguntas se guardan con `es_correcta: false` en TODAS las opciones —
+  // correcto para el candidato, pero esta funcion sirve la vista del RECLUTADOR:
+  // al revisar una prueba terminada veia todas las opciones marcadas como
+  // incorrectas, incluidas las que el candidato acerto. El scoring nunca estuvo
+  // mal (relee el banco), solo la revision.
+  try {
+    const snapshot: PreguntaAsignada[] =
+      typeof evaluacion.preguntas === 'string'
+        ? JSON.parse(evaluacion.preguntas)
+        : evaluacion.preguntas || [];
+
+    if (snapshot.length > 0) {
+      const { obtenerPreguntasConRespuestas } = await import('./banco-preguntas.service');
+      const originales = await obtenerPreguntasConRespuestas(snapshot.map((p) => p.pregunta_id));
+
+      evaluacion.preguntas = snapshot.map((p) => {
+        const original = originales.get(p.pregunta_id);
+        if (!original) return p;
+        return {
+          ...p,
+          opciones: original.opciones ?? p.opciones,
+          respuesta_correcta: original.respuesta_correcta ?? null,
+          explicacion: original.explicacion ?? null,
+        };
+      });
+    }
+  } catch (error) {
+    // Si el banco no resuelve, se devuelve el snapshot tal cual: es preferible
+    // mostrar la evaluacion sin marcar aciertos que no mostrarla.
+    console.error('[Evaluacion] No se pudieron recuperar las respuestas correctas:', error);
+  }
+
+  return evaluacion;
 }
 
 export async function cancelarEvaluacion(id: string, orgId: string): Promise<void> {
-  const result = await pool.query(
-    `UPDATE evaluaciones SET estado = 'cancelada', updated_at = NOW()
-     WHERE id = $1 AND organization_id = $2 AND estado IN ('pendiente', 'enviada')
-     RETURNING id`,
+  // Se comprueba existencia/pertenencia y estado por separado para poder
+  // distinguir 404 (no existe o es de otra organizacion) de 409 (existe pero
+  // ya no esta en un estado cancelable): un UPDATE con ambas condiciones en el
+  // WHERE no permite diferenciar los dos casos a partir de `rowCount === 0`.
+  const actual = await pool.query(
+    `SELECT estado FROM evaluaciones WHERE id = $1 AND organization_id = $2`,
     [id, orgId]
   );
-  if (result.rows.length === 0) throw new Error('No se puede cancelar la evaluación');
+  if (actual.rows.length === 0) throw new NotFoundError('Evaluación', id);
+  if (!['pendiente', 'enviada'].includes(actual.rows[0].estado)) {
+    throw new ConflictError(`No se puede cancelar una evaluación en estado: ${actual.rows[0].estado}`);
+  }
+
+  await pool.query(
+    `UPDATE evaluaciones SET estado = 'cancelada', updated_at = NOW()
+     WHERE id = $1 AND organization_id = $2`,
+    [id, orgId]
+  );
 }
 
 // ─── Plantillas CRUD ───

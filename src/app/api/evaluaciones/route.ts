@@ -3,6 +3,7 @@ import { getOrgId, getUserId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { listarEvaluaciones, crearEvaluacion } from '@/lib/services/evaluacion-tecnica.service';
 import { evaluacionCreateSchema } from '@/lib/validations/evaluacion.schema';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 10;
 
@@ -24,6 +25,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const userId = await getUserId();
     const body = await request.json();

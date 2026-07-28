@@ -50,6 +50,10 @@ import {
   AlertTriangle, ChevronDown,
 } from 'lucide-react';
 import { SelectorEstadoAplicacion } from '@/components/candidatos/selector-estado-aplicacion';
+import { EstancamientoBadge } from '@/components/candidatos/estancamiento-badge';
+import { CandidatoTimeline } from '@/components/candidatos/candidato-timeline';
+import { AgendarEntrevistaModal } from '@/components/entrevistas/agendar-entrevista-modal';
+import { EnviarPruebaModal } from '@/components/evaluaciones/enviar-prueba-modal';
 import type { EvaluacionTecnicaResumen } from '@/lib/types/candidato.types';
 
 function PruebaTecnicaBadge({ evaluacion }: { evaluacion: EvaluacionTecnicaResumen | null }) {
@@ -485,16 +489,19 @@ export function PipelineCompleto({
                         })()}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <SelectorEstadoAplicacion
-                          aplicacionId={app.id}
-                          estadoActual={app.estado}
-                          estadosCompletados={app.estados_completados || []}
-                          candidatoNombre={`${app.candidato.nombre} ${app.candidato.apellido}`}
-                          onEstadoCambiado={fetchData}
-                          size="sm"
-                          vacanteTitulo={vacanteTitulo}
-                          fechaInicioTentativa={(app as { fecha_inicio_tentativa?: string }).fecha_inicio_tentativa}
-                        />
+                        <div className="flex flex-col gap-1 items-start">
+                          <SelectorEstadoAplicacion
+                            aplicacionId={app.id}
+                            estadoActual={app.estado}
+                            estadosCompletados={app.estados_completados || []}
+                            candidatoNombre={`${app.candidato.nombre} ${app.candidato.apellido}`}
+                            onEstadoCambiado={fetchData}
+                            size="sm"
+                            vacanteTitulo={vacanteTitulo}
+                            fechaInicioTentativa={(app as { fecha_inicio_tentativa?: string }).fecha_inicio_tentativa}
+                          />
+                          <EstancamientoBadge estado={app.estado} estadoUpdatedAt={app.estado_updated_at} />
+                        </div>
                       </TableCell>
                       <TableCell>
                         <PruebaTecnicaBadge evaluacion={app.evaluacion_tecnica} />
@@ -663,6 +670,8 @@ function CandidatoDetailPanel({
   const candidato = aplicacion.candidato;
   const score = aplicacion.score_ats !== null ? Number(aplicacion.score_ats) : null;
   const breakdown = aplicacion.score_ats_breakdown as ScoreBreakdownType | null;
+  const [agendarOpen, setAgendarOpen] = useState(false);
+  const [enviarPruebaOpen, setEnviarPruebaOpen] = useState(false);
 
   const recomendacion = score !== null
     ? score >= 85 ? 'Alta' : score >= 70 ? 'Media' : score >= 50 ? 'Baja' : 'No apto'
@@ -708,6 +717,8 @@ function CandidatoDetailPanel({
           </a>
         )}
       </div>
+
+      <EstancamientoBadge estado={aplicacion.estado} estadoUpdatedAt={aplicacion.estado_updated_at} />
 
       {/* Score summary */}
       <div className="bg-soft-gray rounded-lg p-4">
@@ -777,7 +788,48 @@ function CandidatoDetailPanel({
         />
       )}
 
-      {/* Tabs: Breakdown / CV / Documentos / Onboarding */}
+      {/* Acciones contextuales del pipeline */}
+      {aplicacion.estado === 'entrevista_ia' && !aplicacion.evaluacion_tecnica && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => setEnviarPruebaOpen(true)}
+        >
+          <FileText className="h-3.5 w-3.5 mr-1.5" /> Enviar prueba tecnica
+        </Button>
+      )}
+      {aplicacion.estado === 'entrevista_humana' && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => setAgendarOpen(true)}
+        >
+          <Users className="h-3.5 w-3.5 mr-1.5" /> Agendar entrevista
+        </Button>
+      )}
+
+      <AgendarEntrevistaModal
+        aplicacionId={aplicacion.id}
+        candidatoId={candidato.id}
+        vacanteId={aplicacion.vacante_id}
+        candidatoNombre={`${candidato.nombre} ${candidato.apellido || ''}`}
+        open={agendarOpen}
+        onOpenChange={setAgendarOpen}
+        onSuccess={onRefresh}
+      />
+      <EnviarPruebaModal
+        aplicacionId={aplicacion.id}
+        candidatoId={candidato.id}
+        vacanteId={aplicacion.vacante_id}
+        candidatoNombre={`${candidato.nombre} ${candidato.apellido || ''}`}
+        open={enviarPruebaOpen}
+        onOpenChange={setEnviarPruebaOpen}
+        onSuccess={onRefresh}
+      />
+
+      {/* Tabs: Breakdown / CV / Historial / Documentos / Onboarding */}
       <Tabs defaultValue={
         aplicacion.estado === 'contratado' ? 'onboarding' :
         aplicacion.estado === 'seleccionado' ? 'documentos' : 'breakdown'
@@ -785,6 +837,7 @@ function CandidatoDetailPanel({
         <TabsList className="w-full">
           <TabsTrigger value="breakdown" className="flex-1">Score</TabsTrigger>
           <TabsTrigger value="cv" className="flex-1">CV</TabsTrigger>
+          <TabsTrigger value="timeline" className="flex-1">Historial</TabsTrigger>
           {aplicacion.estado === 'seleccionado' && (
             <TabsTrigger value="documentos" className="flex-1 gap-1">
               <FileCheck className="h-3 w-3" /> Docs
@@ -819,6 +872,9 @@ function CandidatoDetailPanel({
             onAnalizarConIA={onRescore}
             analizando={rescoringId === candidato.id}
           />
+        </TabsContent>
+        <TabsContent value="timeline" className="mt-4">
+          <CandidatoTimeline aplicacionId={aplicacion.id} />
         </TabsContent>
         {aplicacion.estado === 'seleccionado' && (
           <TabsContent value="documentos" className="mt-4">

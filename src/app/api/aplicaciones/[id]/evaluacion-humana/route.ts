@@ -3,6 +3,8 @@ import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { pool } from '@/lib/db';
 import { guardarEvaluacionHumana } from '@/lib/services/evaluacion-humana-campos.service';
+import { transicionarEstado } from '@/lib/services/pipeline-transicion.service';
+import { requireEscritura } from '@/lib/auth/authorization';
 
 export const maxDuration = 15;
 
@@ -16,6 +18,8 @@ export async function POST(
 ) {
   try {
     await requireAuth();
+    // Escritura del pipeline: un rol de solo lectura no debe mutar datos.
+    await requireEscritura();
     const orgId = await getOrgId();
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
@@ -27,26 +31,28 @@ export async function POST(
       return apiResponse({ error: 'Se requieren los valores de la evaluación' }, 422);
     }
 
-    // 1. Guardar evaluacion + score_humano + recalcular score_final
-    const { score_humano } = await guardarEvaluacionHumana(orgId, id, valores, observaciones);
-
-    // 2. Transicionar a 'evaluado', acumulando el estado previo en estados_completados.
-    //    Se construye el array en JS (evita el conflicto de tipos text[] vs varchar[]).
-    const actual = await pool.query(
-      `SELECT estado, estados_completados FROM aplicaciones WHERE id = $1 AND organization_id = $2`,
+    // 1. Verificar pertenencia ANTES de escribir nada.
+    //    `guardarEvaluacionHumana` filtra por organizacion pero no falla cuando
+    //    su UPDATE afecta 0 filas, asi que sin este chequeo la peticion seguia
+    //    su curso con el id de otra empresa.
+    const pertenece = await pool.query(
+      `SELECT 1 FROM aplicaciones a
+       JOIN vacantes v ON v.id = a.vacante_id
+       WHERE a.id = $1 AND v.organization_id = $2`,
       [id, orgId]
     );
-    const row = actual.rows[0];
-    if (row && row.estado !== 'evaluado') {
-      const completados: string[] = row.estados_completados || [];
-      if (row.estado && !completados.includes(row.estado)) completados.push(row.estado);
-      await pool.query(
-        `UPDATE aplicaciones
-         SET estado = 'evaluado', estados_completados = $2, updated_at = NOW()
-         WHERE id = $1 AND organization_id = $3`,
-        [id, completados, orgId]
-      );
+    if (pertenece.rowCount === 0) {
+      return apiResponse({ error: 'Aplicacion no encontrada' }, 404);
     }
+
+    // 2. Guardar evaluacion + score_humano + recalcular score_final
+    const { score_humano } = await guardarEvaluacionHumana(orgId, id, valores, observaciones);
+
+    // 3. Transicionar a 'evaluado' por la via central.
+    //    El calculo a mano que habia aqui no hacia backfill del historial y, sobre
+    //    todo, no tenia guard de retroceso: registrar la evaluacion humana de un
+    //    candidato que ya estaba 'seleccionado' lo devolvia a 'evaluado'.
+    await transicionarEstado(id, 'evaluado', { orgId });
 
     return apiResponse({ success: true, score_humano });
   } catch (error) {

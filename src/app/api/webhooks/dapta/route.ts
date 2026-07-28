@@ -21,13 +21,23 @@ export async function POST(request: NextRequest) {
   console.log('[Dapta Webhook] Headers:', JSON.stringify(Object.fromEntries(request.headers.entries()), null, 2));
 
   try {
-    // 1. Verify webhook authenticity
+    // 1. Verify webhook authenticity.
+    //
+    // El guard era `if (daptaClient && ...)`: sin cliente configurado la
+    // verificacion se SALTABA por completo, de modo que el endpoint quedaba
+    // abierto justo cuando la integracion no estaba lista. En produccion, sin
+    // cliente no se procesa nada.
     const daptaClient = createDaptaClient();
-    if (daptaClient && !daptaClient.verifyWebhook(request.headers)) {
+    if (!daptaClient) {
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[Dapta Webhook] ❌ Rechazado: integracion no configurada');
+        return new Response('Unauthorized', { status: 401 });
+      }
+      console.warn('[Dapta Webhook] Sin cliente configurado — se acepta por ser desarrollo');
+    } else if (!daptaClient.verifyWebhook(request.headers)) {
       console.log('[Dapta Webhook] ❌ Auth failed — invalid secret');
       return new Response('Unauthorized', { status: 401 });
     }
-    console.log('[Dapta Webhook] ✅ Auth:', daptaClient ? 'verified' : 'skipped (no client)');
 
     // 2. Parse payload — Dapta may send data in various structures
     const rawBody = await request.text();

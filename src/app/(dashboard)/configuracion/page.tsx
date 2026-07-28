@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { LinkedInConnectButton } from '@/components/linkedin/linkedin-connect-button';
+import { GoogleCalendarConnectButton } from '@/components/configuracion/google-calendar-connect-button';
 import { ChecklistConfig } from '@/components/configuracion/checklist-config';
 import { PlantillaEditor } from '@/components/onboarding/plantilla-editor';
 import { DocumentosOnboardingConfig } from '@/components/onboarding/documentos-onboarding-config';
@@ -495,14 +496,14 @@ function ConfiguracionPage() {
 
         <TabsContent value="integraciones">
           <div className="space-y-4">
-            {/* LinkedIn — real OAuth integration */}
+            {/* LinkedIn y Google Calendar — integraciones OAuth reales */}
             <LinkedInConnectButton />
+            <GoogleCalendarConnectButton />
 
             {/* Other integrations — placeholder cards */}
             {[
               { name: 'Dapta (IA)', desc: 'Entrevistas automatizadas con IA', connected: false },
               { name: 'DocuSign', desc: 'Firma electronica de contratos', connected: false },
-              { name: 'Google Calendar', desc: 'Agendamiento de entrevistas', connected: false },
               { name: 'SendGrid', desc: 'Envio de emails transaccionales', connected: false },
               { name: 'OpenAI', desc: 'Parsing de CVs y analisis de texto', connected: false },
             ].map((integration) => (

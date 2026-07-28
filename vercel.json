@@ -11,6 +11,14 @@
     {
       "path": "/api/onboarding/procesar-programados",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/recordatorios-documentos",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/recordatorios-pipeline",
+      "schedule": "0 15 * * *"
     }
   ]
 }

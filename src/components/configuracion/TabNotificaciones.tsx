@@ -20,7 +20,7 @@ const EVENTOS_CONFIG = [
   { tipo: 'documentos_completos', titulo: 'Documentos completos', descripcion: 'Cuando todos los documentos requeridos estan aprobados', fase: 'Seleccion', prioridad_default: 'alta', inapp_default: true, browser_default: true },
   { tipo: 'documento_rechazado', titulo: 'Documento rechazado', descripcion: 'Cuando el admin rechaza un documento del candidato', fase: 'Seleccion', prioridad_default: 'media', inapp_default: true, browser_default: false },
   { tipo: 'documento_aprobado', titulo: 'Documento aprobado', descripcion: 'Cuando el admin aprueba un documento individual', fase: 'Seleccion', prioridad_default: 'baja', inapp_default: true, browser_default: false },
-  { tipo: 'portal_documentos_expirado', titulo: 'Portal de documentos expirado', descripcion: 'Cuando han pasado 72 horas sin que el candidato cargue documentos', fase: 'Seleccion', prioridad_default: 'alta', inapp_default: true, browser_default: true },
+  { tipo: 'portal_documentos_expirado', titulo: 'Portal de documentos expirado', descripcion: 'Cuando han pasado 30 dias sin que el candidato cargue documentos', fase: 'Seleccion', prioridad_default: 'alta', inapp_default: true, browser_default: true },
   { tipo: 'contrato_generado', titulo: 'Contrato generado', descripcion: 'Cuando se genera el borrador del contrato', fase: 'Contrato', prioridad_default: 'media', inapp_default: true, browser_default: false },
   { tipo: 'contrato_enviado_firma', titulo: 'Contrato enviado a firma', descripcion: 'Cuando el contrato se envia al candidato por SignWell', fase: 'Contrato', prioridad_default: 'alta', inapp_default: true, browser_default: true },
   { tipo: 'contrato_firmado_candidato', titulo: 'Firmado por el candidato', descripcion: 'Cuando el candidato firma el contrato (webhook SignWell)', fase: 'Contrato', prioridad_default: 'alta', inapp_default: true, browser_default: true },
@@ -29,6 +29,8 @@ const EVENTOS_CONFIG = [
   { tipo: 'onboarding_email_enviado', titulo: 'Email de onboarding enviado', descripcion: 'Cuando se envia el email de bienvenida al nuevo empleado', fase: 'Contratacion', prioridad_default: 'media', inapp_default: true, browser_default: false },
   { tipo: 'candidato_duplicado_alerta', titulo: 'Alerta candidato duplicado', descripcion: 'Cuando se detecta que el mismo candidato ya fue contratado', fase: 'Contratacion', prioridad_default: 'alta', inapp_default: true, browser_default: true },
   { tipo: 'contrato_terminado', titulo: 'Contrato terminado', descripcion: 'Cuando se registra la terminacion de un contrato', fase: 'Contratacion', prioridad_default: 'media', inapp_default: true, browser_default: false },
+  { tipo: 'evaluacion_tecnica_expirada', titulo: 'Evaluacion tecnica expirada', descripcion: 'Cuando el candidato no completo la prueba tecnica antes de que expirara el link', fase: 'Entrevistas', prioridad_default: 'media', inapp_default: true, browser_default: true },
+  { tipo: 'contrato_firma_pendiente_prolongada', titulo: 'Firma de contrato pendiente hace dias', descripcion: 'Cuando un contrato lleva varios dias enviado a firma sin completarse', fase: 'Contrato', prioridad_default: 'alta', inapp_default: true, browser_default: true },
 ];
 
 const FASE_COLORES: Record<string, string> = {

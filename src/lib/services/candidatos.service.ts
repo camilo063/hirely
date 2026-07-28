@@ -5,6 +5,7 @@ import {
   CreateCandidatoInput, CreateAplicacionInput, CandidatoFilters,
 } from '../types/candidato.types';
 import { NotFoundError } from '../utils/errors';
+import { assertVacanteDeOrg, assertCandidatoDeOrg } from '@/lib/auth/authorization';
 
 export async function listCandidatos(
   orgId: UUID,
@@ -86,9 +87,10 @@ export async function listCandidatos(
       (
         SELECT a.estado FROM aplicaciones a WHERE a.candidato_id = c.id
         ORDER BY CASE a.estado
-          WHEN 'contratado' THEN 8
-          WHEN 'seleccionado' THEN 7
-          WHEN 'entrevista_humana' THEN 6
+          WHEN 'contratado' THEN 9
+          WHEN 'seleccionado' THEN 8
+          WHEN 'entrevista_humana' THEN 7
+          WHEN 'prueba_tecnica' THEN 6
           WHEN 'entrevista_ia' THEN 5
           WHEN 'preseleccionado' THEN 4
           WHEN 'revisado' THEN 3
@@ -207,6 +209,14 @@ export async function getAplicacionesByVacante(orgId: UUID, vacanteId: UUID): Pr
 }
 
 export async function createAplicacion(orgId: UUID, input: CreateAplicacionInput): Promise<Aplicacion> {
+  // La vacante y el candidato llegan desde la URL y el body. Sin estas dos
+  // comprobaciones se podia (a) inyectar una aplicacion dentro de la vacante de
+  // otra empresa, contaminando su pipeline, y (b) enganchar el candidato de otra
+  // empresa a una vacante propia, con lo que su nombre, email y scores quedaban
+  // expuestos en las lecturas posteriores.
+  await assertVacanteDeOrg(input.vacante_id, orgId);
+  await assertCandidatoDeOrg(input.candidato_id, orgId);
+
   const result = await pool.query<Aplicacion>(
     `INSERT INTO aplicaciones (organization_id, vacante_id, candidato_id, notas)
     VALUES ($1, $2, $3, $4)

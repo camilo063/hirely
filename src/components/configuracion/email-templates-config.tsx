@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { RichTextEditor, RichTextEditorHandle } from '@/components/ui/rich-text-editor';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { sanitizarHtml } from '@/lib/utils/sanitize-html';
 import {
   DEFAULT_TEMPLATE_SELECCION,
   DEFAULT_TEMPLATE_RECHAZO,
@@ -303,12 +304,11 @@ export function EmailTemplatesConfig() {
                         <div
                           className="p-4 bg-white"
                           dangerouslySetInnerHTML={{
-                            __html: renderPreview(
+                            __html: sanitizarHtml(renderPreview(
                               section.key,
                               section.variables,
                               section.defaultTemplate
-                            ),
-                          }}
+                            ),) }}
                         />
                       </div>
                     )}

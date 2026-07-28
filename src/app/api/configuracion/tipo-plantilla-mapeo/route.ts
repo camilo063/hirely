@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { pool } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { assertFilaDeOrg, requireAdmin } from '@/lib/auth/authorization';
 
 // GET — obtener mapeos actuales + datos para los selects
 export const maxDuration = 10;
@@ -15,7 +16,7 @@ export async function GET() {
     const mapeos = await pool.query(
       `SELECT m.id, m.tipo_contrato_slug, m.plantilla_id, p.nombre as plantilla_nombre
        FROM tipo_plantilla_mapeo m
-       JOIN plantillas_contrato p ON p.id = m.plantilla_id
+       JOIN plantillas_contrato p ON p.id = m.plantilla_id AND p.organization_id = $1
        WHERE m.organization_id = $1
        ORDER BY m.tipo_contrato_slug`,
       [orgId]
@@ -51,6 +52,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     await requireAuth();
+    // Solo administradores: esta ruta cambia configuracion de toda la empresa.
+    await requireAdmin();
     const orgId = await getOrgId();
     const body = await request.json();
 
@@ -58,6 +61,13 @@ export async function POST(request: NextRequest) {
     if (!tipo_contrato_slug || !plantilla_id) {
       return apiResponse({ error: 'tipo_contrato_slug y plantilla_id son requeridos' }, 422);
     }
+
+    // La plantilla llega del body: hay que comprobar que es de esta organizacion.
+    // Sin esto se podia mapear una plantilla ajena — lo que filtraba su nombre en
+    // el GET y, peor, dejaba el mapeo apuntando a algo que `createContrato` no
+    // puede resolver, de modo que TODOS los contratos de ese tipo se generaban en
+    // silencio con la plantilla generica por defecto.
+    await assertFilaDeOrg('plantillas_contrato', plantilla_id, orgId);
 
     // Upsert
     const result = await pool.query(
@@ -79,6 +89,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     await requireAuth();
+    // Solo administradores: esta ruta cambia configuracion de toda la empresa.
+    await requireAdmin();
     const orgId = await getOrgId();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -87,10 +99,15 @@ export async function DELETE(request: NextRequest) {
       return apiResponse({ error: 'id es requerido' }, 422);
     }
 
-    await pool.query(
+    const resultado = await pool.query(
       `DELETE FROM tipo_plantilla_mapeo WHERE id = $1 AND organization_id = $2`,
       [id, orgId]
     );
+    // Sin comprobar rowCount, borrar un id inexistente o de otra organizacion
+    // respondia {deleted:true} 200 igual.
+    if (resultado.rowCount === 0) {
+      return apiResponse({ error: 'Mapeo no encontrado' }, 404);
+    }
 
     return apiResponse({ deleted: true });
   } catch (error) {

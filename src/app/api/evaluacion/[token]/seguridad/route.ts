@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { pool } from '@/lib/db';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
+import { rateLimit, respuesta429 } from '@/lib/utils/rate-limit';
 
 /**
  * PUBLIC endpoint - no auth required.
@@ -10,12 +11,28 @@ export const maxDuration = 15;
 
 export async function POST(request: NextRequest, { params }: { params: { token: string } }) {
   try {
+    // Escribe en un JSONB acumulativo: sin freno, quien tenga el token puede
+    // inflar la fila indefinidamente.
+    const rl = await rateLimit({
+      clave: `segEval:${params.token}`,
+      limite: 60,
+      ventanaSegundos: 300,
+    });
+    if (!rl.permitido) return respuesta429(rl.reintentarEn);
+
     const body = await request.json();
     const { tipo, timestamp } = body;
 
     if (!tipo || !['cambio_pestana', 'intento_copia'].includes(tipo)) {
       return apiResponse({ error: 'Tipo de evento inválido' }, 400);
     }
+
+    // El `timestamp` llegaba crudo del cliente y se concatenaba al array: se
+    // aceptaban objetos anidados y cadenas arbitrariamente largas.
+    const marca =
+      typeof timestamp === 'string' && timestamp.length <= 40
+        ? timestamp
+        : new Date().toISOString();
 
     // Verify token exists and evaluation is in progress
     const evalResult = await pool.query(
@@ -38,7 +55,7 @@ export async function POST(request: NextRequest, { params }: { params: { token: 
        SET eventos_seguridad = COALESCE(eventos_seguridad, '[]'::jsonb) || $1::jsonb
        WHERE id = $2`,
       [
-        JSON.stringify({ tipo, timestamp: timestamp || new Date().toISOString() }),
+        JSON.stringify({ tipo, timestamp: marca }),
         evaluacion.id,
       ]
     );

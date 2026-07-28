@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuth, getOrgId } from '@/lib/auth/middleware';
 import { apiResponse, apiError } from '@/lib/utils/api-response';
 import { removeDocumentoOnboarding } from '@/lib/services/onboarding.service';
+import { requireAdmin } from '@/lib/auth/authorization';
 
 // DELETE — Eliminar documento de onboarding
 export const maxDuration = 10;
@@ -12,6 +13,8 @@ export async function DELETE(
 ) {
   try {
     await requireAuth();
+    // Solo administradores: esta ruta cambia configuracion de toda la empresa.
+    await requireAdmin();
     const orgId = await getOrgId();
     const { id } = await params;
 
