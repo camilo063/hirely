@@ -17,6 +17,7 @@
  */
 
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 
 /** Coste de bcrypt. 12 es el equilibrio habitual entre seguridad y latencia. */
 const BCRYPT_ROUNDS = 12;
@@ -83,6 +84,15 @@ export async function gastarTiempoDeVerificacion(): Promise<void> {
   } catch {
     // Irrelevante: el objetivo es el tiempo consumido, no el resultado.
   }
+}
+
+/**
+ * Genera una contraseña temporal aleatoria para asignarsela a un usuario
+ * (creacion desde el panel admin, o restablecimiento sin clave explicita).
+ * base64url evita caracteres ambiguos para copiar/pegar (+, /, =).
+ */
+export function generarPasswordTemporal(): string {
+  return randomBytes(9).toString('base64url');
 }
 
 /**
