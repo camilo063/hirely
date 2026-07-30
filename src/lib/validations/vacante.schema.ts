@@ -20,16 +20,25 @@ const criterioObjectSchema = z.object({
 // Accept both formats
 const criteriosEvaluacionSchema = z.union([criterioArraySchema, criterioObjectSchema]);
 
+/**
+ * Un <Select> de Radix sin opcion seleccionada NO aporta entrada a FormData, asi
+ * que el campo llega al API como `null`, no como cadena vacia. `.optional()`
+ * solo admite `undefined`, de modo que crear una vacante sin elegir
+ * departamento ni tipo de contrato fallaba con un "Error de validacion" que
+ * ademas no decia que campo estaba mal.
+ */
+const textoOpcional = z.string().nullish();
+
 export const vacanteCreateSchema = z.object({
   titulo: z.string().min(3, 'Titulo debe tener al menos 3 caracteres').max(200),
   descripcion: z.string().min(10, 'Descripcion debe tener al menos 10 caracteres'),
-  departamento: z.string().optional(),
+  departamento: textoOpcional,
   ubicacion: z.string().min(1, 'Ubicacion requerida'),
-  tipo_contrato: z.string().optional().default(''),
-  modalidad: z.string().optional(),
+  tipo_contrato: textoOpcional.transform((v) => v ?? ''),
+  modalidad: textoOpcional,
   rango_salarial_min: z.number().positive().nullable().optional(),
   rango_salarial_max: z.number().positive().nullable().optional(),
-  moneda: z.string().default('COP'),
+  moneda: textoOpcional.transform((v) => v || 'COP'),
   criterios_evaluacion: criteriosEvaluacionSchema,
   habilidades_requeridas: z.array(z.string()).min(1, 'Al menos una habilidad requerida'),
   experiencia_minima: z.number().min(0).default(0),
@@ -47,13 +56,13 @@ export const vacanteCreateSchema = z.object({
 export const vacanteUpdateSchema = z.object({
   titulo: z.string().min(3).max(200).optional(),
   descripcion: z.string().min(10).optional(),
-  departamento: z.string().min(1).optional(),
+  departamento: textoOpcional,
   ubicacion: z.string().min(1).optional(),
-  tipo_contrato: z.string().min(1).optional(),
-  modalidad: z.string().optional(),
+  tipo_contrato: textoOpcional,
+  modalidad: textoOpcional,
   rango_salarial_min: z.number().positive().nullable().optional(),
   rango_salarial_max: z.number().positive().nullable().optional(),
-  moneda: z.string().optional(),
+  moneda: textoOpcional,
   estado: z.enum(['borrador', 'publicada', 'pausada', 'cerrada', 'archivada']).optional(),
   criterios_evaluacion: criteriosEvaluacionSchema.optional(),
   habilidades_requeridas: z.array(z.string()).optional(),

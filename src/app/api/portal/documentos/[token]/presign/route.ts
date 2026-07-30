@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPortalData } from '@/lib/services/seleccion.service';
+import { getPortalData, validarTipoDocumentoPermitido } from '@/lib/services/seleccion.service';
 import { pool } from '@/lib/db';
 import { isS3Configured, getPresignedUploadUrl, buildS3Key, S3_BUCKET } from '@/lib/integrations/s3';
+import { ValidationError } from '@/lib/utils/errors';
 
 const ALLOWED_TYPES = [
   'application/pdf',
@@ -111,6 +112,20 @@ export async function POST(
         { success: false, error: 'Organizacion no encontrada' },
         { status: 500 }
       );
+    }
+
+    // Se valida que `tipo` pertenezca al checklist efectivo ANTES de firmar la
+    // URL de subida. Si esto se comprobara solo al confirmar (despues de que
+    // el archivo ya esta en S3), un rechazo aqui dejaba el archivo huerfano en
+    // el bucket para siempre, sin ninguna fila en la base de datos que lo
+    // referenciara.
+    try {
+      await validarTipoDocumentoPermitido(aplicacionId, orgId, tipo);
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        return NextResponse.json({ success: false, error: err.message }, { status: 400 });
+      }
+      throw err;
     }
 
     // Build S3 key and generate presigned upload URL.

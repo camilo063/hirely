@@ -21,6 +21,39 @@ interface VacanteFormProps {
   isEditing?: boolean;
 }
 
+const ETIQUETAS_CAMPO: Record<string, string> = {
+  titulo: 'Titulo',
+  descripcion: 'Descripcion',
+  departamento: 'Departamento',
+  ubicacion: 'Ubicacion',
+  tipo_contrato: 'Tipo de contrato',
+  modalidad: 'Modalidad',
+  rango_salarial_min: 'Salario minimo',
+  rango_salarial_max: 'Salario maximo',
+  moneda: 'Moneda',
+  criterios_evaluacion: 'Criterios de evaluacion',
+  habilidades_requeridas: 'Habilidades requeridas',
+  experiencia_minima: 'Experiencia minima',
+  score_minimo: 'Filtro de corte',
+};
+
+/**
+ * El API devuelve `error: 'Error de validacion'` con el detalle por campo en
+ * `details`. Mostrar solo el mensaje generico dejaba al usuario sin saber que
+ * corregir, asi que aqui se arma un texto con los campos que fallaron.
+ */
+function mensajeDeError(data: { error?: string; details?: Record<string, string[]> }): string {
+  const detalles = data.details;
+  if (detalles && typeof detalles === 'object') {
+    const lineas = Object.entries(detalles).map(([campo, mensajes]) => {
+      const etiqueta = ETIQUETAS_CAMPO[campo.split('.')[0]] || campo;
+      return `${etiqueta}: ${(mensajes || []).join(', ')}`;
+    });
+    if (lineas.length > 0) return lineas.join(' | ');
+  }
+  return data.error || 'Error al guardar';
+}
+
 export function VacanteForm({ initialData, isEditing = false }: VacanteFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -57,19 +90,40 @@ export function VacanteForm({ initialData, isEditing = false }: VacanteFormProps
     setLoading(true);
 
     const formData = new FormData(e.currentTarget);
+    // Un <Select> sin opcion elegida no aparece en FormData: `get` devuelve
+    // null y el API lo rechazaba. Normalizamos a texto siempre.
+    const texto = (campo: string) => ((formData.get(campo) as string | null) ?? '').trim();
+
+    // La habilidad que el usuario dejo escrita sin pulsar Enter/+ tambien cuenta.
+    const habilidadPendiente = nuevaHabilidad.trim();
+    const habilidadesFinales = habilidadPendiente && !habilidades.includes(habilidadPendiente)
+      ? [...habilidades, habilidadPendiente]
+      : habilidades;
+
+    if (habilidadesFinales !== habilidades) {
+      setHabilidades(habilidadesFinales);
+      setNuevaHabilidad('');
+    }
+
+    if (habilidadesFinales.length === 0) {
+      setLoading(false);
+      toast.error('Agrega al menos una habilidad requerida');
+      return;
+    }
+
     const body = {
-      titulo: formData.get('titulo'),
-      descripcion: formData.get('descripcion'),
-      departamento: formData.get('departamento'),
-      ubicacion: formData.get('ubicacion'),
-      tipo_contrato: formData.get('tipo_contrato'),
-      modalidad: formData.get('modalidad') || 'remoto',
+      titulo: texto('titulo'),
+      descripcion: texto('descripcion'),
+      departamento: texto('departamento'),
+      ubicacion: texto('ubicacion'),
+      tipo_contrato: texto('tipo_contrato'),
+      modalidad: texto('modalidad') || 'remoto',
       rango_salarial_min: formData.get('rango_salarial_min') ? Number(formData.get('rango_salarial_min')) : null,
       rango_salarial_max: formData.get('rango_salarial_max') ? Number(formData.get('rango_salarial_max')) : null,
-      moneda: formData.get('moneda') || 'COP',
+      moneda: texto('moneda') || 'COP',
       experiencia_minima: Number(formData.get('experiencia_minima') || 0),
       criterios_evaluacion: criterios,
-      habilidades_requeridas: habilidades,
+      habilidades_requeridas: habilidadesFinales,
       score_minimo: usarUmbralOrg ? null : scoreMinimo,
     };
 
@@ -84,7 +138,7 @@ export function VacanteForm({ initialData, isEditing = false }: VacanteFormProps
       });
 
       const data = await res.json();
-      if (!data.success) throw new Error(data.error);
+      if (!data.success) throw new Error(mensajeDeError(data));
 
       toast.success(isEditing ? 'Vacante actualizada' : 'Vacante creada exitosamente');
       router.push(`/vacantes/${data.data.id}`);

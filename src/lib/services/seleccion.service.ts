@@ -513,6 +513,33 @@ export async function getChecklistAplicacion(
 }
 
 /**
+ * Valida que `tipo` pertenezca al checklist efectivo de la aplicacion.
+ *
+ * CRITICO: se debe llamar ANTES de escribir el archivo a S3 (en /presign,
+ * antes de emitir la URL firmada), no solo al confirmar la subida. Antes esta
+ * comprobacion vivia unicamente dentro de `uploadDocumentoPortal`, que en el
+ * flujo directo-a-S3 se ejecuta en el paso de /confirm — es decir, DESPUES de
+ * que el navegador ya subio el archivo directo a S3 con la URL firmada. Si
+ * esta validacion rechazaba el tipo en ese punto, el archivo quedaba huerfano
+ * en S3 para siempre: la subida ya habia ocurrido y no habia como deshacerla,
+ * y la base de datos nunca se enteraba. El candidato veia un error o (peor)
+ * ninguno, y el reclutador veia el documento como "nunca subido" con el
+ * archivo real sentado en el bucket sin ninguna fila que lo referenciara.
+ */
+export async function validarTipoDocumentoPermitido(
+  aplicacionId: string,
+  orgId: string,
+  tipo: string,
+  checklistVacante?: string | DocumentoChecklist[] | null,
+  tipoContrato?: string | null
+): Promise<void> {
+  const checklistValido = await getChecklistAplicacion(aplicacionId, orgId, checklistVacante, tipoContrato);
+  if (!checklistValido.some((c) => c.tipo === tipo)) {
+    throw new ValidationError('Este documento no forma parte de tu lista de requisitos.');
+  }
+}
+
+/**
  * Aplica el filtro `aplica_para` de forma conservadora.
  *
  * Si el tipo de contrato no pertenece al vocabulario de `aplica_para`, NO se
@@ -873,15 +900,19 @@ export async function uploadDocumentoPortal(
   // inventado creaba una fila nueva (y una notificacion) desde un endpoint sin
   // sesion: 40 peticiones bastaban para sepultar el checklist real del
   // reclutador bajo decenas de documentos basura.
-  const checklistValido = await getChecklistAplicacion(
+  //
+  // Esta misma validacion TAMBIEN se llama desde /presign, antes de emitir la
+  // URL firmada de S3 — ver `validarTipoDocumentoPermitido`. Aqui se repite a
+  // proposito como defensa en profundidad para el flujo tradicional (/upload,
+  // que sube primero a storage y llama a esta funcion despues): si algun dia
+  // /presign deja de llamarla, esta funcion sigue protegida por su cuenta.
+  await validarTipoDocumentoPermitido(
     aplicacionId,
     tokenResult.rows[0].organization_id,
+    tipo,
     tokenResult.rows[0].checklist_documentos,
     tokenResult.rows[0].tipo_contrato
   );
-  if (!checklistValido.some((c) => c.tipo === tipo)) {
-    throw new ValidationError('Este documento no forma parte de tu lista de requisitos.');
-  }
 
   // Update document. Se identifica por (aplicacion_id, tipo) — que ahora es
   // unico — usando el id solo como pista. Asi una subida repetida del mismo

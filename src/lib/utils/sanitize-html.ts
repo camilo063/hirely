@@ -16,6 +16,14 @@
  */
 
 import DOMPurify from 'isomorphic-dompurify';
+import { escaparHtml } from './escape-html';
+
+// Se re-exporta para no romper a quienes ya importaban `escaparHtml` desde
+// aqui. Los archivos NUEVOS que solo necesiten escapar texto (sin sanitizar
+// HTML rico) deben importar directamente de `escape-html.ts` — importar de
+// ESTE archivo arrastra `isomorphic-dompurify` igual, sin importar que
+// exportacion se use, porque el `import` de arriba se evalua siempre.
+export { escaparHtml };
 
 /** Etiquetas admitidas en contratos, plantillas y correos. */
 const ETIQUETAS_PERMITIDAS = [
@@ -51,22 +59,4 @@ export function sanitizarHtml(html: string | null | undefined): string {
     FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'link', 'meta', 'base'],
     FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'formaction'],
   });
-}
-
-/**
- * Escapa texto plano para interpolarlo dentro de HTML.
- *
- * Para los datos que vienen de terceros y NO deben llevar formato: el nombre del
- * candidato sale de un formulario publico y se interpola en correos firmados con
- * la marca del cliente. Sin escapar, permite inyectar enlaces o maquetacion en
- * un correo que el destinatario atribuye a la empresa.
- */
-export function escaparHtml(texto: string | null | undefined): string {
-  if (texto === null || texto === undefined) return '';
-  return String(texto)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }

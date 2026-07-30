@@ -3,7 +3,7 @@ import { pool } from '@/lib/db';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
 import { transicionarEstado } from '@/lib/services/pipeline-transicion.service';
 import { verificarFirmaHmac, extraerFirma } from '@/lib/integrations/webhook-signature';
-import { escaparHtml } from '@/lib/utils/sanitize-html';
+import { escaparHtml } from '@/lib/utils/escape-html';
 
 /**
  * Webhook receiver for firma providers (SignWell, DocuSign, etc.)
