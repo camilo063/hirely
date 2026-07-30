@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Building, Building2, Sliders, Link2, Save, FileCheck, UserCheck, FileSignature, Mail, Info, Bell } from 'lucide-react';
+import { Building, Building2, Sliders, Link2, Save, FileCheck, UserCheck, FileSignature, Mail, Info, Bell, UsersRound } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,7 @@ import { TiposContratoConfig } from '@/components/configuracion/tipos-contrato-c
 import { TipoPlantillaMapeo } from '@/components/configuracion/tipo-plantilla-mapeo';
 import { EmailTemplatesConfig } from '@/components/configuracion/email-templates-config';
 import { TabNotificaciones } from '@/components/configuracion/TabNotificaciones';
+import { UsuariosConfig } from '@/components/configuracion/usuarios-config';
 import { toast } from 'sonner';
 
 export default function ConfiguracionPageWrapper() {
@@ -294,6 +295,9 @@ function ConfiguracionPage() {
           <TabsTrigger value="notificaciones">
             <Bell className="h-4 w-4 mr-1" /> Notificaciones
           </TabsTrigger>
+          <TabsTrigger value="usuarios">
+            <UsersRound className="h-4 w-4 mr-1" /> Usuarios
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="organizacion">
@@ -529,6 +533,10 @@ function ConfiguracionPage() {
 
         <TabsContent value="notificaciones">
           <TabNotificaciones />
+        </TabsContent>
+
+        <TabsContent value="usuarios">
+          <UsuariosConfig />
         </TabsContent>
       </Tabs>
     </div>
