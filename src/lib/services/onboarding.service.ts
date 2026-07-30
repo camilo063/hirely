@@ -4,7 +4,7 @@ import { crearNotificacion } from '@/lib/services/notificaciones.service';
 import { UUID } from '@/lib/types/common.types';
 import { NotFoundError } from '@/lib/utils/errors';
 import { transicionarEstado } from './pipeline-transicion.service';
-import { escaparHtml } from '@/lib/utils/sanitize-html';
+import { escaparHtml } from '@/lib/utils/escape-html';
 import type {
   OnboardingConfig,
   OnboardingCandidato,

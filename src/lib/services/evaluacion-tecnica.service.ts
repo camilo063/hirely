@@ -13,7 +13,7 @@ import type {
 } from '@/lib/types/evaluacion-tecnica.types';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/utils/errors';
 import { assertAplicacionDeOrg } from '@/lib/auth/authorization';
-import { escaparHtml } from '@/lib/utils/sanitize-html';
+import { escaparHtml } from '@/lib/utils/escape-html';
 
 /**
  * Orquestador de evaluaciones técnicas.

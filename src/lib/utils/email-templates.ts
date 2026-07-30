@@ -1,4 +1,4 @@
-import { escaparHtml } from '@/lib/utils/sanitize-html';
+import { escaparHtml } from '@/lib/utils/escape-html';
 /**
  * Email HTML templates for selection and document notifications.
  * Inline CSS, Hirely branding, mobile responsive (max-width 600px).

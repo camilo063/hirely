@@ -9,7 +9,7 @@
  */
 
 import { resendClient, EMAIL_FROM } from '@/lib/integrations/resend';
-import { escaparHtml } from '@/lib/utils/sanitize-html';
+import { escaparHtml } from '@/lib/utils/escape-html';
 
 interface EnviarEmailParams {
   to: string | string[];
