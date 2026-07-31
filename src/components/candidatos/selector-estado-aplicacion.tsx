@@ -35,8 +35,16 @@ import { DialogTerminacionContrato } from './dialog-terminacion-contrato';
 import { ContratarModal } from '@/components/onboarding/contratar-modal';
 import { EvaluacionHumanaModal } from '@/components/candidatos/evaluacion-humana-modal';
 import { usePipelineEstados } from '@/hooks/usePipelineEstados';
+import { leerRespuestaApi } from '@/lib/utils/respuesta-api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+/** Campos extra que devuelve PATCH /api/aplicaciones/[id]/estado. */
+interface RespuestaEstado {
+  warning?: { tipo: string; vacantes: string };
+  contratoCreado?: boolean;
+  contratoWarning?: string | null;
+}
 
 interface SelectorEstadoAplicacionProps {
   aplicacionId: string;
@@ -121,21 +129,23 @@ export function SelectorEstadoAplicacion({
           ...(forzarAuto ? { forzar_auto: true } : {}),
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const respuesta = await leerRespuestaApi<RespuestaEstado>(res);
+
+      if (respuesta.ok) {
+        const data = respuesta.data;
         // Check for contrato feedback
-        if (data.data?.warning?.tipo === 'doble_contratacion') {
+        if (data?.warning?.tipo === 'doble_contratacion') {
           toast.warning('Candidato contratado con advertencia', {
-            description: `Este candidato ya esta contratado en: ${data.data.warning.vacantes}. Verifica que esto sea intencional.`,
+            description: `Este candidato ya esta contratado en: ${data.warning.vacantes}. Verifica que esto sea intencional.`,
             duration: 8000,
           });
-        } else if (data.data?.contratoCreado === true) {
+        } else if (data?.contratoCreado === true) {
           toast.success('Candidato contratado', {
             description: 'Email enviado al candidato. Contrato generado como borrador — revisalo en Contratos.',
           });
-        } else if (data.data?.contratoWarning) {
+        } else if (data?.contratoWarning) {
           toast.warning('Candidato contratado — Revisar contrato', {
-            description: `Email enviado. ${data.data.contratoWarning}`,
+            description: `Email enviado. ${data.contratoWarning}`,
             duration: 8000,
           });
         } else {
@@ -143,9 +153,16 @@ export function SelectorEstadoAplicacion({
         }
         onEstadoCambiado?.();
       } else {
-        toast.error(data.data?.error || data.error || 'Error actualizando estado');
+        toast.error(respuesta.error ?? 'Error actualizando estado', {
+          duration: respuesta.respuestaNoJson ? 8000 : 4000,
+        });
+        // Si el servidor no devolvio JSON (timeout o caida de la funcion) el
+        // cambio pudo haberse aplicado igual. Se refresca para que la pantalla
+        // muestre el estado real en vez de dejar el anterior en pantalla.
+        if (respuesta.respuestaNoJson) onEstadoCambiado?.();
       }
     } catch {
+      // Aqui si es un fallo de red de verdad: `fetch` no llego a responder.
       toast.error('Error de conexion');
     } finally {
       setLoading(false);

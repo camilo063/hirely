@@ -3,6 +3,9 @@
     "src/app/api/notificaciones/sse/route.ts": {
       "memory": 256
     },
+    "src/app/api/aplicaciones/**": {
+      "memory": 1024
+    },
     "src/app/api/**": {
       "memory": 512
     }

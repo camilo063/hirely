@@ -35,7 +35,7 @@ export async function seleccionarCandidato(
   payload: SeleccionPayload,
   orgId: string,
   userId: string
-): Promise<{ portalUrl: string; portalToken: string }> {
+): Promise<{ portalUrl: string; portalToken: string; documentosCompletos: boolean }> {
   const client = await pool.connect();
   // Un fallo DESPUES del COMMIT (por ejemplo getAppUrl() sin APP_URL al armar el
   // email) ejecutaba ROLLBACK sobre una transaccion ya cerrada: los datos si
@@ -70,7 +70,7 @@ export async function seleccionarCandidato(
     // salario ofrecido, su fecha de inicio y su tipo de contrato — datos que
     // despues alimentan la generacion del contrato — y ademas resucitaba
     // requisitos de documentos que su contrato no exigia.
-    await client.query(
+    const seleccionada = await client.query(
       `UPDATE aplicaciones SET
         seleccionado_at = COALESCE(seleccionado_at, NOW()),
         tipo_contrato = COALESCE($2, tipo_contrato),
@@ -78,7 +78,8 @@ export async function seleccionarCandidato(
         salario_ofrecido = COALESCE($4, salario_ofrecido),
         moneda = COALESCE($5, moneda, 'COP'),
         updated_at = NOW()
-       WHERE id = $1`,
+       WHERE id = $1
+       RETURNING tipo_contrato`,
       [
         payload.aplicacion_id,
         payload.tipo_contrato || null,
@@ -150,11 +151,9 @@ export async function seleccionarCandidato(
     // tenia, y usar el del payload (vacio) recrearia requisitos que ese contrato
     // no exige. Es el mismo filtro que evalua la completitud — si los dos lados
     // no coinciden, el candidato queda trancado o se le salta un requisito.
-    const tipoEfectivo = await client.query(
-      `SELECT tipo_contrato FROM aplicaciones WHERE id = $1`,
-      [payload.aplicacion_id]
-    );
-    checklist = filtrarPorTipoContrato(checklist, tipoEfectivo.rows[0]?.tipo_contrato ?? null);
+    // El valor lo devuelve el propio UPDATE de arriba (RETURNING), que ya
+    // resolvio los COALESCE: releerlo era una consulta de ida y vuelta de mas.
+    checklist = filtrarPorTipoContrato(checklist, seleccionada.rows[0]?.tipo_contrato ?? null);
 
     // 5. Sincronizar el checklist de documentos (idempotente)
     //
@@ -163,14 +162,22 @@ export async function seleccionarCandidato(
     // UNIQUE (aplicacion_id, tipo) de la migracion 032. Los documentos ya
     // subidos se conservan intactos — nunca se pisa el trabajo del candidato.
     if (checklist.length > 0) {
-      for (const doc of checklist) {
-        await client.query(
-          `INSERT INTO documentos_candidato (aplicacion_id, tipo, nombre_archivo, url, estado)
-           VALUES ($1, $2, $3, '', 'pendiente')
-           ON CONFLICT (aplicacion_id, tipo) DO NOTHING`,
-          [payload.aplicacion_id, doc.tipo, doc.label]
-        );
-      }
+      // Una sola sentencia para todo el checklist en vez de un INSERT por
+      // documento. Con 7 requisitos eran 7 idas y vueltas a la base dentro de
+      // una transaccion abierta; contra una BD remota (Neon desde Vercel) eso es
+      // la diferencia entre milisegundos y varios segundos del presupuesto de la
+      // funcion. El ON CONFLICT sigue siendo el que garantiza la idempotencia.
+      await client.query(
+        `INSERT INTO documentos_candidato (aplicacion_id, tipo, nombre_archivo, url, estado)
+         SELECT $1, req.tipo, req.label, '', 'pendiente'
+         FROM unnest($2::text[], $3::text[]) AS req(tipo, label)
+         ON CONFLICT (aplicacion_id, tipo) DO NOTHING`,
+        [
+          payload.aplicacion_id,
+          checklist.map((d) => d.tipo),
+          checklist.map((d) => d.label),
+        ]
+      );
 
       // Limpia requisitos que ya no aplican (p. ej. cambio el tipo de contrato o
       // la organizacion edito el checklist). Solo se borran los que siguen
@@ -191,13 +198,19 @@ export async function seleccionarCandidato(
     // 'documentos_completos' es una subida del candidato, y no habia nada que
     // subir — el estado es automatico, asi que el reclutador tampoco podia
     // asignarlo, y 'contratado' lo exige como prerequisito.
+    //
+    // El valor efectivo se devuelve al llamador (`documentosCompletos`) para que
+    // decida si encadena el avance a 'documentos_completos'. Antes la ruta lo
+    // releia con un SELECT propio despues de la transaccion; aqui ya se conoce.
     const sinObligatorios = !checklist.some((d) => d.requerido);
-    if (sinObligatorios) {
-      await client.query(
-        `UPDATE aplicaciones SET documentos_completos = true, updated_at = NOW() WHERE id = $1`,
-        [payload.aplicacion_id]
-      );
-    }
+    const completitud = await client.query(
+      sinObligatorios
+        ? `UPDATE aplicaciones SET documentos_completos = true, updated_at = NOW()
+           WHERE id = $1 RETURNING documentos_completos`
+        : `SELECT documentos_completos FROM aplicaciones WHERE id = $1`,
+      [payload.aplicacion_id]
+    );
+    const documentosCompletos = completitud.rows[0]?.documentos_completos === true;
 
     // 6. Log activity — solo si de verdad hubo un cambio de estado.
     // Esta funcion es idempotente y se puede invocar varias veces sobre la misma
@@ -286,7 +299,7 @@ export async function seleccionarCandidato(
       }
     }
 
-    return { portalUrl, portalToken };
+    return { portalUrl, portalToken, documentosCompletos };
   } catch (error) {
     if (!comprometido) await client.query('ROLLBACK');
     throw error;
