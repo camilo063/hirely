@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
       duracion_minutos: validated.duracion_minutos,
       puntaje_aprobatorio: validated.puntaje_aprobatorio,
       estructura: validated.estructura,
+      pregunta_ids: validated.pregunta_ids,
       asignado_por: userId,
     });
 

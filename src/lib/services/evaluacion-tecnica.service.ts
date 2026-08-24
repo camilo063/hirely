@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { pool } from '@/lib/db';
 import { getAppUrl } from '@/lib/utils/url';
-import { seleccionarPreguntas } from './banco-preguntas.service';
+import { seleccionarPreguntas, seleccionarPreguntasPorIds } from './banco-preguntas.service';
 import { calcularScoreEvaluacion } from './evaluacion-scoring.service';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
 import { transicionarEstado } from './pipeline-transicion.service';
@@ -11,9 +11,10 @@ import type {
   PreguntaAsignada,
   RespuestaCandidato,
 } from '@/lib/types/evaluacion-tecnica.types';
-import { NotFoundError, ValidationError, ConflictError } from '@/lib/utils/errors';
+import { AppError, NotFoundError, ValidationError, ConflictError } from '@/lib/utils/errors';
 import { assertAplicacionDeOrg } from '@/lib/auth/authorization';
 import { escaparHtml } from '@/lib/utils/escape-html';
+import { esEmailValido } from '@/lib/utils/email-address';
 
 /**
  * Orquestador de evaluaciones técnicas.
@@ -38,6 +39,7 @@ export async function crearEvaluacion(data: {
   puntaje_aprobatorio: number;
   preguntas?: PreguntaAsignada[];
   estructura?: EstructuraPlantilla[];
+  pregunta_ids?: string[];
   asignado_por: string;
 }): Promise<Evaluacion> {
   // La aplicacion llega del body. Sin esta comprobacion se podia crear una
@@ -75,11 +77,32 @@ export async function crearEvaluacion(data: {
   let preguntas: PreguntaAsignada[];
   if (data.preguntas && data.preguntas.length > 0) {
     preguntas = data.preguntas;
+  } else if (data.pregunta_ids && data.pregunta_ids.length > 0) {
+    // El asistente manda los ids que ya mostro en el preview para que al
+    // candidato le lleguen esas preguntas y no un sorteo nuevo.
+    preguntas = await seleccionarPreguntasPorIds(
+      data.organization_id,
+      data.pregunta_ids,
+      estructura
+    );
+    if (preguntas.length === 0) {
+      throw new ValidationError(
+        'Ninguna de las preguntas seleccionadas sigue disponible en el banco. Vuelve a generar el preview.'
+      );
+    }
   } else if (estructura && estructura.length > 0) {
     preguntas = await seleccionarPreguntas(data.organization_id, estructura);
   } else {
     throw new ValidationError(
       'Se requieren preguntas, una estructura o una plantilla con estructura para crear la evaluación'
+    );
+  }
+
+  if (preguntas.length === 0) {
+    // Sin preguntas la evaluacion se creaba igual, con puntaje total 0, y el
+    // candidato recibia un examen vacio.
+    throw new ValidationError(
+      'No hay preguntas activas en el banco para las categorías y dificultades elegidas.'
     );
   }
 
@@ -117,7 +140,20 @@ export async function enviarEvaluacion(evaluacionId: string, orgId: string): Pro
   const ev = result.rows[0];
 
   if (ev.estado !== 'pendiente' && ev.estado !== 'enviada') {
-    throw new Error(`No se puede enviar una evaluación en estado: ${ev.estado}`);
+    // ConflictError y no `Error` a secas: un `Error` plano cae en el 500 generico
+    // de `apiError` y el reclutador solo veia "Error interno del servidor".
+    throw new ConflictError(`No se puede enviar una evaluación en estado: ${ev.estado}`);
+  }
+
+  // El correo del candidato suele venir del CV parseado, donde una direccion
+  // truncada ("angelagalvis@hotmai") pasa sin validar. Se comprueba ANTES de
+  // marcar la evaluacion como enviada: si no, se escribia `enviada_at`, el
+  // proveedor rechazaba el envio y el reclutador recibia un 500 opaco.
+  if (!esEmailValido(ev.candidato_email)) {
+    throw new ValidationError(
+      `El correo de ${ev.candidato_nombre} no es válido: "${ev.candidato_email ?? ''}". ` +
+      `Corrígelo en la ficha del candidato y vuelve a enviar la evaluación.`
+    );
   }
 
   const baseUrl = getAppUrl();
@@ -171,13 +207,22 @@ export async function enviarEvaluacion(evaluacionId: string, orgId: string): Pro
   // marcarla como 'enviada' dejaba al reclutador esperando una respuesta que no
   // iba a llegar. Se revierte el estado y se avisa.
   if (!resultadoEnvio.success) {
-    // `token_expira_at` tambien se revierte: dejarlo con la caducidad recien
-    // puesta era un dato huerfano de un envio que no ocurrio.
+    // `token_expira_at` y `enviada_at` tambien se revierten: dejarlos con los
+    // valores recien puestos era un dato huerfano de un envio que no ocurrio
+    // (quedaban filas en 'pendiente' con fecha de envio).
     await pool.query(
-      `UPDATE evaluaciones SET estado = 'pendiente', token_expira_at = NULL, updated_at = NOW() WHERE id = $1`,
+      `UPDATE evaluaciones SET estado = 'pendiente', enviada_at = NULL, token_expira_at = NULL, updated_at = NOW() WHERE id = $1`,
       [evaluacionId]
     );
-    throw new Error('No se pudo enviar el correo de la evaluacion. Revisa la configuracion de correo.');
+    // AppError y no `Error` a secas: el motivo real del proveedor (direccion
+    // rechazada, dominio sin verificar, clave invalida) se perdia en el 500
+    // generico y no habia forma de saber que arreglar desde la interfaz.
+    throw new AppError(
+      `No se pudo enviar el correo a ${ev.candidato_email}` +
+      (resultadoEnvio.error ? `: ${resultadoEnvio.error}` : '. Revisa la configuración de correo.'),
+      422,
+      'EMAIL_NO_ENVIADO'
+    );
   }
 
   await pool.query(
