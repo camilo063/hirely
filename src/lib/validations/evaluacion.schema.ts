@@ -91,6 +91,9 @@ export const evaluacionCreateSchema = z.object({
   duracion_minutos: z.number().int().min(5).max(480).default(60),
   puntaje_aprobatorio: z.number().int().min(1).max(100).default(70),
   estructura: z.array(estructuraItemSchema).optional(),
+  // Ids de las preguntas que el reclutador vio en el preview. Se releen del
+  // banco en el servidor; nunca se aceptan enunciados ni puntajes del cliente.
+  pregunta_ids: z.array(z.string().uuid()).max(200).optional(),
 });
 
 // ─── Respuestas del candidato ───

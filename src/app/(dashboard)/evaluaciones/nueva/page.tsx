@@ -120,34 +120,27 @@ export default function NuevaEvaluacionPage() {
     } catch { /* ignore */ }
   }
 
+  // El preview NO crea nada. Antes usaba POST /api/evaluaciones, asi que cada
+  // vez que se entraba al paso 3 quedaba una evaluacion real en la base: si el
+  // envio fallaba y el reclutador reintentaba, se acumulaban filas fantasma.
   async function generatePreview() {
     setLoadingPreview(true);
+    setCreatedEvalId(null);
     try {
-      // Use the API to create a temporary evaluation with estructura to get preview
-      const res = await fetch('/api/evaluaciones', {
+      const res = await fetch('/api/evaluaciones/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          aplicacion_id: selectedAplicacion,
-          candidato_id: aplicaciones.find(a => a.id === selectedAplicacion)?.candidato_id,
-          vacante_id: selectedVacante,
-          plantilla_id: selectedPlantilla || null,
-          titulo,
-          duracion_minutos: duracion,
-          puntaje_aprobatorio: puntajeAprobatorio,
-          estructura: estructura.filter(e => e.categoria),
-        }),
+        body: JSON.stringify({ estructura: estructura.filter(e => e.categoria) }),
       });
       const data = await res.json();
       if (data.success) {
-        const pregs = typeof data.data.preguntas === 'string' ? JSON.parse(data.data.preguntas) : data.data.preguntas;
-        setPreviewPreguntas(pregs);
-        // Store the created evaluation ID for sending
-        setCreatedEvalId(data.data.id);
+        setPreviewPreguntas(data.data?.preguntas || []);
       } else {
+        setPreviewPreguntas([]);
         toast.error(data.error || 'Error generando preview');
       }
     } catch {
+      setPreviewPreguntas([]);
       toast.error('Error generando preview');
     } finally {
       setLoadingPreview(false);
@@ -156,16 +149,52 @@ export default function NuevaEvaluacionPage() {
 
   const [createdEvalId, setCreatedEvalId] = useState<string | null>(null);
 
+  /**
+   * Crea la evaluacion con las preguntas del preview, o reutiliza la que ya se
+   * creo en un intento anterior. Reutilizarla es lo que evita duplicados cuando
+   * el envio falla (correo invalido, por ejemplo) y el reclutador reintenta.
+   */
+  async function ensureEvaluacion(): Promise<string | null> {
+    if (createdEvalId) return createdEvalId;
+
+    const res = await fetch('/api/evaluaciones', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        aplicacion_id: selectedAplicacion,
+        candidato_id: aplicaciones.find(a => a.id === selectedAplicacion)?.candidato_id,
+        vacante_id: selectedVacante,
+        plantilla_id: selectedPlantilla || null,
+        titulo,
+        duracion_minutos: duracion,
+        puntaje_aprobatorio: puntajeAprobatorio,
+        estructura: estructura.filter(e => e.categoria),
+        pregunta_ids: previewPreguntas.map(p => p.pregunta_id),
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      toast.error(data.error || 'Error creando la evaluación');
+      return null;
+    }
+    setCreatedEvalId(data.data.id);
+    return data.data.id as string;
+  }
+
   async function handleCreateAndSend() {
-    if (!createdEvalId) return;
     setCreating(true);
     try {
-      const res = await fetch(`/api/evaluaciones/${createdEvalId}/enviar`, { method: 'POST' });
+      const evalId = await ensureEvaluacion();
+      if (!evalId) return;
+
+      const res = await fetch(`/api/evaluaciones/${evalId}/enviar`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         toast.success('Evaluación creada y enviada');
         router.push('/evaluaciones');
       } else {
+        // La evaluacion ya existe y queda en 'pendiente': el reintento reutiliza
+        // la misma, no crea otra.
         toast.error(data.error || 'Error enviando');
       }
     } catch {
@@ -175,10 +204,17 @@ export default function NuevaEvaluacionPage() {
     }
   }
 
-  function handleCreateOnly() {
-    if (createdEvalId) {
+  async function handleCreateOnly() {
+    setCreating(true);
+    try {
+      const evalId = await ensureEvaluacion();
+      if (!evalId) return;
       toast.success('Evaluación creada (pendiente de envío)');
       router.push('/evaluaciones');
+    } catch {
+      toast.error('Error creando la evaluación');
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -446,13 +482,17 @@ export default function NuevaEvaluacionPage() {
                 <ArrowLeft className="h-4 w-4" /> Anterior
               </Button>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={handleCreateOnly} disabled={!createdEvalId || creating}>
+                <Button
+                  variant="outline"
+                  onClick={handleCreateOnly}
+                  disabled={previewPreguntas.length === 0 || loadingPreview || creating}
+                >
                   <Check className="h-4 w-4 mr-1" />
                   Crear (enviar después)
                 </Button>
                 <Button
                   onClick={handleCreateAndSend}
-                  disabled={!createdEvalId || creating}
+                  disabled={previewPreguntas.length === 0 || loadingPreview || creating}
                   className="bg-teal hover:bg-teal/90 gap-1"
                 >
                   <Send className="h-4 w-4" />

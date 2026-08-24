@@ -267,6 +267,73 @@ export async function seleccionarPreguntas(
 }
 
 /**
+ * Reconstruye las preguntas de un preview a partir de sus ids.
+ *
+ * El asistente de creacion muestra un preview y luego crea la evaluacion; si el
+ * servidor volviera a sortear preguntas, al candidato le llegarian otras
+ * distintas de las que el reclutador reviso. Se reciben solo los ids y las filas
+ * se releen del banco (acotadas a la organizacion): el cliente no puede inyectar
+ * enunciados ni puntajes propios.
+ *
+ * Los ids desconocidos, de otra organizacion o de preguntas inactivas se
+ * descartan en silencio, igual que hace `seleccionarPreguntas` cuando el banco
+ * no da para tantas preguntas.
+ */
+export async function seleccionarPreguntasPorIds(
+  orgId: string,
+  preguntaIds: string[],
+  estructura?: EstructuraPlantilla[]
+): Promise<PreguntaAsignada[]> {
+  if (preguntaIds.length === 0) return [];
+
+  const result = await pool.query(
+    `SELECT * FROM preguntas_banco
+     WHERE organization_id = $1 AND estado = 'activa' AND id = ANY($2)`,
+    [orgId, preguntaIds]
+  );
+
+  const porId = new Map<string, PreguntaBanco>(
+    result.rows.map((r: PreguntaBanco) => [r.id, r])
+  );
+
+  // Puntaje por categoria segun la estructura, que es lo que vio el reclutador.
+  // Sin estructura se cae al puntaje propio de la pregunta en el banco.
+  const puntosPorCategoria = new Map<string, number>();
+  for (const item of estructura || []) {
+    if (!puntosPorCategoria.has(item.categoria)) {
+      puntosPorCategoria.set(item.categoria, item.puntos_por_pregunta);
+    }
+  }
+
+  const preguntas: PreguntaAsignada[] = [];
+  let orden = 1;
+
+  // Se respeta el orden en que llegaron los ids: es el del preview.
+  for (const id of preguntaIds) {
+    const row = porId.get(id);
+    if (!row) continue;
+
+    const opciones = row.opciones
+      ? (typeof row.opciones === 'string' ? JSON.parse(row.opciones) : row.opciones)
+          .map((o: { id: string; texto: string }) => ({ id: o.id, texto: o.texto, es_correcta: false }))
+      : null;
+
+    preguntas.push({
+      pregunta_id: row.id,
+      enunciado: row.enunciado,
+      tipo: row.tipo,
+      opciones,
+      puntos: puntosPorCategoria.get(row.categoria) ?? row.puntos,
+      orden: orden++,
+      categoria: row.categoria,
+      dificultad: row.dificultad,
+    });
+  }
+
+  return preguntas;
+}
+
+/**
  * Get questions with correct answers for scoring.
  */
 export async function obtenerPreguntasConRespuestas(preguntaIds: string[]): Promise<Map<string, PreguntaBanco>> {

@@ -10,6 +10,7 @@
 
 import { resendClient, EMAIL_FROM } from '@/lib/integrations/resend';
 import { escaparHtml } from '@/lib/utils/escape-html';
+import { esEmailValido } from '@/lib/utils/email-address';
 
 interface EnviarEmailParams {
   to: string | string[];
@@ -52,6 +53,18 @@ export async function enviarEmail(params: EnviarEmailParams): Promise<EmailResul
   if (!resendClient) {
     console.warn('[Email] RESEND_API_KEY no configurada — email no enviado');
     return { success: false, error: 'Email no configurado' };
+  }
+
+  // Una direccion mal formada la rechaza el proveedor con un mensaje generico
+  // sobre el campo `to`, sin decir cual de los destinatarios falla. Se comprueba
+  // aqui para devolver la direccion concreta que hay que corregir.
+  const destinatarios = Array.isArray(params.to) ? params.to : [params.to];
+  const invalidos = destinatarios.filter((d) => !esEmailValido(d));
+  if (invalidos.length > 0) {
+    return {
+      success: false,
+      error: `Dirección de correo inválida: ${invalidos.join(', ')}`,
+    };
   }
 
   try {
