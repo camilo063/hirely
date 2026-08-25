@@ -13,16 +13,27 @@
  * Lista blanca. Se permite lo que un documento o un correo necesitan de verdad
  * (texto, tablas, imagenes, estilos en linea) y se elimina todo lo ejecutable:
  * `script`, `iframe`, `object`, manejadores `on*` y URLs `javascript:`.
+ *
+ * POR QUE `sanitize-html` Y NO DOMPurify
+ * DOMPurify necesita un DOM. En el servidor eso significaba `isomorphic-dompurify`
+ * -> `jsdom`, y jsdom >= 28 depende de `@exodus/bytes`, que se distribuye como ESM
+ * puro. El `require()` que hace `html-encoding-sniffer` sobre ese paquete revienta
+ * con ERR_REQUIRE_ESM dentro de las funciones serverless de Vercel — al cargar el
+ * modulo, antes de que la ruta ejecute una sola linea — y devuelve una pagina HTML
+ * de error en vez de JSON ("Unexpected token '<'" en el cliente). Tumbaba
+ * POST /api/plantillas-contrato, /api/contratos, /vacantes/[id] y /candidatos/[id].
+ * Marcar jsdom como paquete externo en next.config no lo arregla: el require de un
+ * ESM sigue fallando en ese runtime.
+ *
+ * `sanitize-html` analiza el HTML con htmlparser2, sin DOM. Funciona igual en Node
+ * y en el navegador, asi que servidor y cliente producen EXACTAMENTE la misma
+ * salida y no hay desajustes de hidratacion en las vistas previas.
  */
 
-import DOMPurify from 'isomorphic-dompurify';
+import sanitizeHtmlLib from 'sanitize-html';
 import { escaparHtml } from './escape-html';
 
-// Se re-exporta para no romper a quienes ya importaban `escaparHtml` desde
-// aqui. Los archivos NUEVOS que solo necesiten escapar texto (sin sanitizar
-// HTML rico) deben importar directamente de `escape-html.ts` — importar de
-// ESTE archivo arrastra `isomorphic-dompurify` igual, sin importar que
-// exportacion se use, porque el `import` de arriba se evalua siempre.
+// Se re-exporta para no romper a quienes ya importaban `escaparHtml` desde aqui.
 export { escaparHtml };
 
 /** Etiquetas admitidas en contratos, plantillas y correos. */
@@ -44,19 +55,54 @@ const ATRIBUTOS_PERMITIDOS = [
 ];
 
 /**
+ * Construcciones de CSS que pueden ejecutar codigo o filtrar datos desde un
+ * atributo `style`. Se dejan pasar el resto de estilos en linea porque la
+ * maquetacion de los contratos depende de ellos.
+ */
+const CSS_PELIGROSO = /(?:expression|behavior|-moz-binding)\s*\(|(?:javascript|vbscript|data)\s*:/i;
+
+/** Quita del `style` solo las declaraciones peligrosas, conservando el formato. */
+function limpiarStyle(style: string): string | undefined {
+  const seguro = style
+    .split(';')
+    .filter((declaracion) => declaracion.trim() && !CSS_PELIGROSO.test(declaracion))
+    .join('; ')
+    .trim();
+  return seguro || undefined;
+}
+
+/**
  * Sanea HTML enriquecido conservando el formato del documento.
  *
- * `ALLOWED_URI_REGEXP` restringe los enlaces a esquemas seguros: sin el,
- * `javascript:` en un `href` sigue ejecutandose al hacer clic.
+ * Los esquemas de URL se limitan a los seguros: sin eso, `javascript:` en un
+ * `href` sigue ejecutandose al hacer clic. Las URLs relativas siguen permitidas.
  */
 export function sanitizarHtml(html: string | null | undefined): string {
   if (!html) return '';
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ETIQUETAS_PERMITIDAS,
-    ALLOWED_ATTR: ATRIBUTOS_PERMITIDOS,
-    ALLOW_DATA_ATTR: false,
-    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
-    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'link', 'meta', 'base'],
-    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'formaction'],
+  return sanitizeHtmlLib(html, {
+    allowedTags: ETIQUETAS_PERMITIDAS,
+    allowedAttributes: { '*': ATRIBUTOS_PERMITIDOS },
+    allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+    allowedSchemesAppliedToAttributes: ['href', 'src'],
+    // Etiquetas cuyo contenido de texto tambien se descarta: dejar el cuerpo de
+    // un <script> como texto plano en el documento no aporta nada y confunde.
+    nonTextTags: ['script', 'style', 'textarea', 'option', 'noscript', 'template'],
+    disallowedTagsMode: 'discard',
+    transformTags: {
+      '*': (tagName, attribs) => {
+        const limpios: Record<string, string> = { ...attribs };
+        if (limpios.style) {
+          const style = limpiarStyle(limpios.style);
+          if (style) limpios.style = style;
+          else delete limpios.style;
+        }
+        // Un enlace a otra pestaña sin `noopener` deja que el destino manipule
+        // la ventana de origen via `window.opener`.
+        if (tagName === 'a' && limpios.target === '_blank') {
+          limpios.rel = 'noopener noreferrer';
+        }
+        return { tagName, attribs: limpios };
+      },
+    },
   });
 }
