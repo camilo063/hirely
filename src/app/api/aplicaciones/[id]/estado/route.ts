@@ -7,9 +7,6 @@ import { getTransicionesPermitidas } from '@/lib/constants/pipeline-states';
 import { seleccionarCandidato } from '@/lib/services/seleccion.service';
 import { sendEmail } from '@/lib/services/email.service';
 import { emailRechazoTemplate, sustituirVariables } from '@/lib/utils/email-templates';
-import { enviarParaFirma } from '@/lib/services/firma-electronica.service';
-import { createContrato, autoPoblarDatos } from '@/lib/services/contratos.service';
-import { registrarOnboardingContratado } from '@/lib/services/onboarding.service';
 import { crearNotificacion } from '@/lib/services/notificaciones.service';
 import { getPipelineEstadosConfig } from '@/lib/services/pipeline-config.service';
 import { requireEscritura } from '@/lib/auth/authorization';
@@ -18,7 +15,25 @@ import {
   calcularEstadosCompletados,
 } from '@/lib/services/pipeline-transicion.service';
 
-export const maxDuration = 10;
+// NOTA SOBRE LAS IMPORTACIONES
+// `contratos.service` y `onboarding.service` NO se importan arriba a proposito:
+// solo hacen falta en la rama 'contratado' y se cargan con import() dinamico
+// dentro de ella. Estaticamente, `contratos.service` arrastra sanitize-html ->
+// isomorphic-dompurify -> jsdom, que es exactamente la cadena que tumbaba rutas
+// enteras en serverless (ver next.config.mjs): el modulo se cargaba al arrancar
+// la funcion, antes de ejecutar una sola linea del handler, asi que un fallo ahi
+// respondia con una pagina de error de la plataforma —no con JSON— y el cliente
+// solo podia mostrar "Error de conexion". Cambiar el estado a 'seleccionado' no
+// necesita nada de contratos ni de onboarding; ahora tampoco los carga.
+// `enviarParaFirma` estaba importado y no se usaba en ningun punto del archivo:
+// arrastraba ademas los clientes de firma electronica sin ninguna razon.
+
+// El tramo 'seleccionado' es el mas pesado de la ruta (transaccion con el
+// checklist de documentos + emision del token del portal + email al candidato).
+// Con el limite anterior de 10s, una latencia alta de BD o de Resend agotaba la
+// funcion: la plataforma cortaba con un 504 cuyo cuerpo no es JSON y el
+// reclutador veia "Error de conexion" aunque el cambio si se hubiera aplicado.
+export const maxDuration = 60;
 
 export async function PATCH(
   request: NextRequest,
@@ -83,8 +98,13 @@ export async function PATCH(
 
     // 4. Handle side effects for 'seleccionado'
     if (nuevoEstado === 'seleccionado') {
+      // Se cronometra el tramo completo: es el unico punto de la ruta que puede
+      // acercarse al limite de la funcion, y sin esta marca en los logs no habia
+      // forma de distinguir "se cayo" de "tardo demasiado" desde produccion.
+      const inicio = Date.now();
+      let documentosCompletos = false;
       try {
-        await seleccionarCandidato(
+        const seleccion = await seleccionarCandidato(
           {
             aplicacion_id: id,
             enviar_email_seleccion: true,
@@ -92,6 +112,7 @@ export async function PATCH(
           orgId,
           userId
         );
+        documentosCompletos = seleccion.documentosCompletos;
       } catch (selError) {
         console.error('[Estado] Error en seleccionarCandidato:', selError);
         // seleccionarCandidato already sets estado to 'seleccionado',
@@ -109,11 +130,9 @@ export async function PATCH(
       // se encadena el segundo avance. De lo contrario la aplicacion se quedaba
       // esperando una subida que nunca iba a ocurrir, con 'documentos_completos'
       // inalcanzable (es automatico) y 'contratado' bloqueado detras de el.
-      const sinDocs = await pool.query(
-        `SELECT documentos_completos FROM aplicaciones WHERE id = $1`,
-        [id]
-      );
-      if (sinDocs.rows[0]?.documentos_completos === true) {
+      // El dato lo devuelve `seleccionarCandidato`, que acaba de calcularlo: una
+      // consulta menos en el tramo mas largo de la ruta.
+      if (documentosCompletos) {
         await transicionarEstado(id, 'documentos_completos', {
           soloDesde: ['documentos_pendientes'],
           orgId,
@@ -166,6 +185,8 @@ export async function PATCH(
       } catch (e) {
         console.error('[notificacion] Error:', e);
       }
+
+      console.log(`[Estado] seleccionado -> documentos_pendientes en ${Date.now() - inicio}ms (aplicacion ${id})`);
 
       return apiResponse(updatedResult.rows[0]);
     }
@@ -274,6 +295,7 @@ export async function PATCH(
             ? new Date(fechaExtra.rows[0].fecha_inicio_tentativa).toISOString().slice(0, 10)
             : new Date().toISOString().slice(0, 10));
 
+        const { registrarOnboardingContratado } = await import('@/lib/services/onboarding.service');
         onboardingResult = await registrarOnboardingContratado({
           aplicacionId: id,
           orgId,
@@ -298,6 +320,10 @@ export async function PATCH(
 
         if (!contratoId) {
           try {
+            // Carga diferida: solo la contratacion necesita el modulo de
+            // contratos (y con el, jsdom via sanitize-html).
+            const { createContrato, autoPoblarDatos } = await import('@/lib/services/contratos.service');
+
             // Determinar tipo de contrato desde la vacante
             const vacanteTipoResult = await pool.query(
               `SELECT v.tipo_contrato FROM aplicaciones a JOIN vacantes v ON v.id = a.vacante_id WHERE a.id = $1`,

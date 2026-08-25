@@ -20,6 +20,7 @@ import { ScoreBadge } from '@/components/candidatos/score-badge';
 import { AgendarEntrevistaModal } from '@/components/entrevistas/agendar-entrevista-modal';
 import { Candidato, AplicacionConVacante } from '@/lib/types/candidato.types';
 import { getFuenteColor } from '@/lib/utils/design-tokens';
+import { leerRespuestaApi } from '@/lib/utils/respuesta-api';
 import { toast } from 'sonner';
 
 export default function CandidatoDetailPage() {
@@ -209,12 +210,14 @@ export default function CandidatoDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado: 'documentos_completos', forzar_auto: true }),
       });
-      if (res.ok) {
+      const respuesta = await leerRespuestaApi(res);
+      if (respuesta.ok) {
         toast.success('Estado actualizado a documentos completos');
         fetchAplicaciones();
       } else {
-        const data = await res.json();
-        toast.error(data.error || 'Error actualizando estado');
+        toast.error(respuesta.error ?? 'Error actualizando estado');
+        // Respuesta no-JSON: el cambio pudo aplicarse, se refresca la vista.
+        if (respuesta.respuestaNoJson) fetchAplicaciones();
       }
     } catch {
       toast.error('Error de conexion');
