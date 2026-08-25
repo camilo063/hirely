@@ -15,6 +15,7 @@ import {
 } from '@/lib/types/contrato.types';
 import { renderPlantillaContrato } from '@/lib/utils/plantillas-contrato-default';
 import { mapEmpresaConfigToDatos } from '@/lib/utils/empresa-contrato';
+import { leerRespuestaApi } from '@/lib/utils/respuesta-api';
 import { useTiposContrato } from '@/hooks/useTiposContrato';
 import { sanitizarHtml } from '@/lib/utils/sanitize-html';
 
@@ -41,27 +42,6 @@ const FUENTE_LABELS: Record<string, string> = {
   'organization.name': 'Configuración › Empresa',
   today: 'Automático (fecha de hoy)',
 };
-
-/**
- * Lee la respuesta de la API tolerando que NO sea JSON.
- *
- * Cuando la funcion serverless se cae antes de ejecutar la ruta (o agota su
- * tiempo), la plataforma responde con una pagina HTML de error. `res.json()`
- * reventaba entonces con `Unexpected token '<', "<!DOCTYPE "... is not valid
- * JSON`, un mensaje que no le dice nada al usuario ni ayuda a diagnosticar.
- */
-async function leerRespuesta(res: Response): Promise<{ success?: boolean; error?: string; data?: unknown }> {
-  const texto = await res.text();
-  try {
-    return JSON.parse(texto);
-  } catch {
-    throw new Error(
-      res.ok
-        ? 'El servidor devolvio una respuesta inesperada. Intenta de nuevo.'
-        : `El servidor respondio con un error (${res.status}). Intenta de nuevo o revisa los registros.`
-    );
-  }
-}
 
 export function PlantillaContratoEditor() {
   const [plantillas, setPlantillas] = useState<PlantillaContrato[]>([]);
@@ -141,8 +121,8 @@ export function PlantillaContratoEditor() {
           variables: VARIABLES_CONTRATO[newTipo as TipoContrato]?.map(v => v.key) || [],
         }),
       });
-      const data = await leerRespuesta(res);
-      if (!data.success) throw new Error(data.error);
+      const respuesta = await leerRespuestaApi(res);
+      if (!respuesta.ok) throw new Error(respuesta.error!);
       toast.success('Plantilla creada');
       setShowNew(false);
       setNewNombre('');
@@ -167,8 +147,8 @@ export function PlantillaContratoEditor() {
           contenido_html: selected.contenido_html,
         }),
       });
-      const data = await leerRespuesta(res);
-      if (!data.success) throw new Error(data.error);
+      const respuesta = await leerRespuestaApi(res);
+      if (!respuesta.ok) throw new Error(respuesta.error!);
       toast.success('Plantilla actualizada');
       fetchPlantillas();
     } catch (err) {
@@ -181,8 +161,8 @@ export function PlantillaContratoEditor() {
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/plantillas-contrato/${id}`, { method: 'DELETE' });
-      const data = await leerRespuesta(res);
-      if (!data.success) throw new Error(data.error);
+      const respuesta = await leerRespuestaApi(res);
+      if (!respuesta.ok) throw new Error(respuesta.error!);
       toast.success('Plantilla eliminada');
       if (selected?.id === id) setSelected(null);
       fetchPlantillas();
